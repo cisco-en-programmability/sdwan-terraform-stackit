@@ -1,0 +1,65 @@
+#cloud-config
+hostname: ${hostname}
+ssh_pwauth: true
+chpasswd:
+  expire: false
+  list:
+  - root:${admin_password}
+  - admin:${admin_password}
+users:
+- name: admin
+  lock_passwd: false
+write_files:
+- path: /etc/default/personality
+  owner: root:root
+  permissions: "0644"
+  content: |
+    vmanage
+- path: /etc/confd/init/cloud-init.xml
+  owner: root:root
+  permissions: "0644"
+  content: |
+${format("    %s", replace(chomp(zcloud_xml), "\n", "\n    "))}
+- path: /etc/confd/init/zcloud.xml
+  owner: root:root
+  permissions: "0644"
+  content: |
+${format("    %s", replace(chomp(zcloud_xml), "\n", "\n    "))}
+%{ if trimspace(root_ca_cert) != "" ~}
+- path: /usr/share/viptela/root-ca.crt
+  owner: root:root
+  permissions: "0644"
+  content: |
+${format("    %s", replace(chomp(root_ca_cert), "\n", "\n    "))}
+%{ endif ~}
+- path: /usr/local/bin/install-vmanage-rootca.sh
+  owner: root:root
+  permissions: "0755"
+  content: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    exec >>/var/log/install-vmanage-rootca.log 2>&1
+
+    for _ in $(seq 1 180); do
+      if command -v cli >/dev/null 2>&1; then
+        break
+      fi
+      sleep 10
+    done
+
+    if ! command -v cli >/dev/null 2>&1; then
+      exit 0
+    fi
+
+    if [ -s /usr/share/viptela/root-ca.crt ]; then
+      cli -c "request root-cert-chain install /usr/share/viptela/root-ca.crt" || true
+    fi
+
+    command -v systemctl >/dev/null 2>&1 && systemctl restart viptela || true
+- path: /opt/web-app/etc/persona
+  owner: vmanage:vmanage-admin
+  permissions: "0644"
+  content: |
+    {"persona":"COMPUTE_AND_DATA"}
+runcmd:
+- [ bash, -lc, "/usr/local/bin/install-vmanage-rootca.sh || true" ]

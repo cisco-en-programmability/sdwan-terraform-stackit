@@ -1,0 +1,23 @@
+#cloud-config
+ssh_pwauth: true
+chpasswd:
+  expire: false
+  list:
+  - root:${admin_password}
+  - admin:${admin_password}
+users:
+- name: admin
+  lock_passwd: false
+%{ if ssh_public_key != "" ~}
+  ssh_authorized_keys:
+  - ${ssh_public_key}
+%{ endif ~}
+write_files:
+- path: /etc/confd/init/cloud-init.xml
+  permissions: "0644"
+  content: |
+${format("    %s", replace(chomp(zcloud_xml), "\n", "\n    "))}
+- path: /etc/confd/init/zcloud.xml
+  permissions: "0644"
+  content: |
+${format("    %s", replace(chomp(zcloud_xml), "\n", "\n    "))}

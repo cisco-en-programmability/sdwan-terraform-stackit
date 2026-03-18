@@ -1,0 +1,89 @@
+<config xmlns="http://tail-f.com/ns/config/1.0">
+  <system xmlns="http://viptela.com/system">
+    <host-name>${hostname}</host-name>
+    <personality>vmanage</personality>
+    <device-model>vmanage</device-model>
+%{ if rootcert_installed ~}
+    <rootcert-installed>true</rootcert-installed>
+%{ endif ~}
+%{ if certificate_installed ~}
+    <certificate-installed>true</certificate-installed>
+    <vmanage-signed-certificate>${vmanage_signed_certificate}</vmanage-signed-certificate>
+%{ endif ~}
+    <system-ip>${system_ip}</system-ip>
+    <organization-name>${organization_name}</organization-name>
+    <sp-organization-name>${organization_name}</sp-organization-name>
+    <site-id>${site_id}</site-id>
+    <domain-id>${domain_id}</domain-id>
+    <daemon-restart>false</daemon-restart>
+    <vbond>
+      <remote>${vbond_hostname}</remote>
+      <port>${vbond_port}</port>
+    </vbond>
+    <aaa>
+      <auth-order>local</auth-order>
+      <auth-order>radius</auth-order>
+      <auth-order>tacacs</auth-order>
+      <user>
+        <name>admin</name>
+        <password>${admin_password_hash}</password>
+        <group>netadmin</group>
+      </user>
+    </aaa>
+  </system>
+  <vpn xmlns="http://viptela.com/vpn">
+    <vpn-instance>
+      <vpn-id>0</vpn-id>
+      <host>
+        <hostname>${vbond_hostname}</hostname>
+%{ for ip in vbond_ips ~}
+        <ip>${ip}</ip>
+%{ endfor ~}
+      </host>
+      <interface>
+        <if-name>eth1</if-name>
+        <ip>
+          <dhcp-client>true</dhcp-client>
+        </ip>
+        <tunnel-interface>
+          <allow-service>
+            <dhcp>true</dhcp>
+            <dns>true</dns>
+            <icmp>true</icmp>
+            <sshd>true</sshd>
+            <netconf>true</netconf>
+            <ntp>true</ntp>
+            <stun>true</stun>
+            <https>true</https>
+          </allow-service>
+        </tunnel-interface>
+        <shutdown>false</shutdown>
+      </interface>
+      <interface>
+        <if-name>eth2</if-name>
+        <ip>
+          <address>${cluster_ip}/${cluster_prefix_length}</address>
+        </ip>
+        <shutdown>false</shutdown>
+      </interface>
+    </vpn-instance>
+    <vpn-instance>
+      <vpn-id>512</vpn-id>
+      <interface>
+        <if-name>eth0</if-name>
+        <ip>
+          <dhcp-client>true</dhcp-client>
+        </ip>
+        <shutdown>false</shutdown>
+      </interface>
+    </vpn-instance>
+  </vpn>
+  <confdConfig xmlns="http://tail-f.com/ns/confd_dyncfg/1.0">
+    <snmpAgent>
+      <enabled>true</enabled>
+      <snmpEngine>
+        <snmpEngineID>${snmp_engine_id}</snmpEngineID>
+      </snmpEngine>
+    </snmpAgent>
+  </confdConfig>
+</config>

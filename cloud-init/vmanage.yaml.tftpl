@@ -1,0 +1,56 @@
+#cloud-config
+hostname: ${hostname}
+ssh_pwauth: true
+chpasswd:
+  expire: false
+  list:
+  - root:${admin_password}
+  - admin:${admin_password}
+users:
+- name: admin
+  lock_passwd: false
+%{ if ssh_public_key != "" ~}
+  ssh_authorized_keys:
+  - ${ssh_public_key}
+%{ endif ~}
+write_files:
+- path: /etc/viptela/cloudinit.cfg
+  owner: root:root
+  permissions: "0644"
+  content: |
+    {
+      "disk": "/dev/vdb",
+      "format": true
+    }
+- path: /etc/default/personality
+  owner: root:root
+  permissions: "0644"
+  content: |
+    vmanage
+- path: /etc/default/inited
+  owner: root:root
+  permissions: "0644"
+  content: |
+    1
+- path: /etc/viptela/cdb_init_done
+  owner: root:root
+  permissions: "0644"
+  content: |
+    1
+- path: /etc/confd/init/cloud-init.xml
+  owner: root:root
+  permissions: "0644"
+  content: |
+${format("    %s", replace(chomp(zcloud_xml), "\n", "\n    "))}
+- path: /etc/confd/init/zcloud.xml
+  owner: root:root
+  permissions: "0644"
+  content: |
+${format("    %s", replace(chomp(zcloud_xml), "\n", "\n    "))}
+- path: /opt/web-app/etc/persona
+  owner: vmanage:vmanage-admin
+  permissions: "0644"
+  content: |
+    {"persona":"COMPUTE_AND_DATA"}
+runcmd:
+- [ bash, -lc, "command -v systemctl >/dev/null 2>&1 && systemctl restart viptela || true" ]

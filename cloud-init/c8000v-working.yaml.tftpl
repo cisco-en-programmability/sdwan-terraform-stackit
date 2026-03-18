@@ -1,0 +1,99 @@
+Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+MIME-Version: 1.0
+
+--==BOUNDARY==
+Content-Type: text/cloud-config; charset="us-ascii"
+
+#cloud-config
+vinitparam:
+ - org : "${organization_name}"
+ - vbond : ${vbond_ip}
+
+--==BOUNDARY==
+Content-Type: text/cloud-boothook; charset="us-ascii"
+
+#cloud-boothook
+hostname ${hostname}
+!
+username admin privilege 15 password ${admin_password}
+!
+%{ if ntp_server != "" ~}
+ntp server ${ntp_server}
+!
+%{ endif ~}
+system
+ system-ip             ${system_ip}
+ overlay-id            1
+ site-id               ${site_id}
+ organization-name     "${organization_name}"
+ sp-organization-name  "${organization_name}"
+ vbond ${vbond_ip}
+!
+interface GigabitEthernet1
+ description   MANAGEMENT - VPN512
+ vrf forwarding Mgmt-intf
+ ip address dhcp client-id GigabitEthernet1
+ ip dhcp client default-router distance 1
+ negotiation auto
+ no mop enabled
+ no mop sysid
+!
+interface GigabitEthernet2
+ description   TRANSPORT - VPN0
+ ip address dhcp client-id GigabitEthernet2
+ ip dhcp client default-router distance 1
+ negotiation auto
+ no mop enabled
+ no mop sysid
+!
+interface GigabitEthernet3
+ description   SERVICE - VPN1
+ vrf forwarding 1
+ ip address ${service_ip} ${cidrnetmask(format("%s/%d", service_ip, service_prefix_length))}
+ negotiation auto
+ no mop enabled
+ no mop sysid
+!
+interface Tunnel1
+ ip unnumbered GigabitEthernet2
+ tunnel source GigabitEthernet2
+ tunnel mode sdwan
+!
+sdwan
+ interface GigabitEthernet2
+  tunnel-interface
+   encapsulation ipsec
+   color default
+   allow-service all
+   no allow-service bgp
+   allow-service dhcp
+   allow-service dns
+   allow-service icmp
+   allow-service sshd
+   no allow-service netconf
+   no allow-service ntp
+   no allow-service ospf
+   no allow-service stun
+   no allow-service https
+   no allow-service snmp
+   no allow-service bfd
+!
+no ip http server
+no ip http secure-server
+!
+vrf definition 1
+ rd 1:1
+ address-family ipv4
+  route-target export 1:1
+  route-target import 1:1
+  exit-address-family
+ !
+ address-family ipv6
+  exit-address-family
+ !
+!
+line vty 0 4
+ transport input ssh
+!
+
+--==BOUNDARY==--

@@ -1,0 +1,29 @@
+system
+ host-name ${hostname}
+ system-ip ${system_ip}
+ site-id ${site_id}
+ organization-name "${organization_name}"
+ vbond ${vbond_hostname}
+ clock timezone UTC
+!
+vpn 0
+ host ${vbond_hostname} ip ${join(" ", vbond_ips)}
+ interface eth1
+  ip dhcp-client
+  tunnel-interface
+   encapsulation ipsec
+   allow-service all
+  exit
+  no shutdown
+ !
+ interface eth2
+  ip address ${cluster_ip}/${cluster_prefix_length}
+  no shutdown
+ !
+!
+vpn 512
+ interface eth0
+  ip dhcp-client
+  no shutdown
+ !
+!

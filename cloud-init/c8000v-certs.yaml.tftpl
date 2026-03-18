@@ -1,0 +1,165 @@
+Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+MIME-Version: 1.0
+
+--==BOUNDARY==
+Content-Type: text/cloud-config; charset="us-ascii"
+
+#cloud-config
+vinitparam:
+ - org : "${organization_name}"
+ - vbond : ${vbond_ip}
+%{ if trimspace(root_ca_cert) != "" || trimspace(server_cert) != "" || trimspace(server_key) != "" || trimspace(server_csr) != "" ~}
+write_files:
+%{ if trimspace(root_ca_cert) != "" ~}
+ - path: /bootflash/root-ca.crt
+   owner: root:root
+   permissions: "0644"
+   content: |
+${format("      %s", replace(chomp(root_ca_cert), "\n", "\n      "))}
+%{ endif ~}
+%{ if trimspace(server_cert) != "" ~}
+ - path: /bootflash/server.crt
+   owner: root:root
+   permissions: "0644"
+   content: |
+${format("      %s", replace(chomp(server_cert), "\n", "\n      "))}
+%{ endif ~}
+%{ if trimspace(server_key) != "" ~}
+ - path: /bootflash/server.key
+   owner: root:root
+   permissions: "0600"
+   content: |
+${format("      %s", replace(chomp(server_key), "\n", "\n      "))}
+%{ endif ~}
+%{ if trimspace(server_csr) != "" ~}
+ - path: /bootflash/server.csr
+   owner: root:root
+   permissions: "0644"
+   content: |
+${format("      %s", replace(chomp(server_csr), "\n", "\n      "))}
+%{ endif ~}
+ - path: /usr/local/bin/install-sdwan-certs.sh
+   owner: root:root
+   permissions: "0755"
+   content: |
+     #!/usr/bin/env bash
+     set -euo pipefail
+     exec >>/var/log/install-sdwan-certs.log 2>&1
+
+     run_cli() {
+       if command -v ioscli >/dev/null 2>&1; then
+         ioscli "$1"
+       elif command -v cli >/dev/null 2>&1; then
+         cli -c "$1"
+       else
+         return 127
+       fi
+     }
+
+     for _ in $(seq 1 180); do
+       if command -v ioscli >/dev/null 2>&1 || command -v cli >/dev/null 2>&1; then
+         break
+       fi
+       sleep 10
+     done
+
+%{ if trimspace(root_ca_cert) != "" ~}
+     run_cli "request platform software sdwan root-cert-chain install bootflash:root-ca.crt" || true
+%{ endif ~}
+%{ if trimspace(server_cert) != "" ~}
+     run_cli "request platform software sdwan certificate install bootflash:server.crt" || true
+%{ endif ~}
+%{ endif ~}
+%{ if trimspace(root_ca_cert) != "" || trimspace(server_cert) != "" || trimspace(server_key) != "" || trimspace(server_csr) != "" ~}
+runcmd:
+ - [ bash, -lc, "/usr/local/bin/install-sdwan-certs.sh || true" ]
+%{ endif ~}
+
+--==BOUNDARY==
+Content-Type: text/cloud-boothook; charset="us-ascii"
+
+#cloud-boothook
+hostname ${hostname}
+!
+username admin privilege 15 password ${admin_password}
+!
+%{ if ntp_server != "" ~}
+ntp server ${ntp_server}
+!
+%{ endif ~}
+system
+ system-ip             ${system_ip}
+ overlay-id            1
+ site-id               ${site_id}
+ organization-name     "${organization_name}"
+ sp-organization-name  "${organization_name}"
+ vbond ${vbond_ip}
+!
+interface GigabitEthernet1
+ description   MANAGEMENT - VPN512
+ vrf forwarding Mgmt-intf
+ ip address dhcp client-id GigabitEthernet1
+ ip dhcp client default-router distance 1
+ negotiation auto
+ no mop enabled
+ no mop sysid
+!
+interface GigabitEthernet2
+ description   TRANSPORT - VPN0
+ ip address dhcp client-id GigabitEthernet2
+ ip dhcp client default-router distance 1
+ negotiation auto
+ no mop enabled
+ no mop sysid
+!
+interface GigabitEthernet3
+ description   SERVICE - VPN1
+ vrf forwarding 1
+ ip address ${service_ip} ${cidrnetmask(format("%s/%d", service_ip, service_prefix_length))}
+ negotiation auto
+ no mop enabled
+ no mop sysid
+!
+interface Tunnel1
+ ip unnumbered GigabitEthernet2
+ tunnel source GigabitEthernet2
+ tunnel mode sdwan
+!
+sdwan
+ interface GigabitEthernet2
+  tunnel-interface
+   encapsulation ipsec
+   color default
+   allow-service all
+   no allow-service bgp
+   allow-service dhcp
+   allow-service dns
+   allow-service icmp
+   allow-service sshd
+   no allow-service netconf
+   no allow-service ntp
+   no allow-service ospf
+   no allow-service stun
+   no allow-service https
+   no allow-service snmp
+   no allow-service bfd
+!
+no ip http server
+no ip http secure-server
+!
+vrf definition 1
+ rd 1:1
+ address-family ipv4
+  route-target export 1:1
+  route-target import 1:1
+  exit-address-family
+ !
+ address-family ipv6
+  exit-address-family
+ !
+!
+line vty 0 4
+ transport input ssh
+!
+
+--==BOUNDARY==--

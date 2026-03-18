@@ -1,0 +1,92 @@
+project_id         = "00000000-0000-0000-0000-000000000000"
+region             = "eu01"
+availability_zone  = "eu01-1"
+prefix             = "shivram"
+organization_name  = "SHIVRAM_SDWAN"
+vbond_hostname     = "vbond.vbond"
+
+image_ids = {
+  vmanage = "replace-with-stackit-image-id"
+  vsmart  = "replace-with-stackit-image-id"
+  vbond   = "replace-with-stackit-image-id"
+  c8000v  = "replace-with-stackit-image-id"
+}
+
+machine_types = {
+  vmanage    = "g3i.28"
+  controller = "c3i.4"
+  c8000v     = "c3i.4"
+}
+
+boot_volume_sizes = {
+  vmanage    = 30
+  controller = 12
+  c8000v     = 12
+}
+
+vmanage_data_disk_size = 1024
+
+admin_password      = "replace-with-a-strong-password"
+admin_password_hash = "$6$replace-with-openssl-passwd-6-output"
+ssh_public_key      = "ssh-ed25519 AAAA..."
+vmanage_cert_mode                  = "disabled"
+vmanage_generated_cert_dir         = "certs/vmanage/generated"
+vmanage_generated_root_common_name = "SHIVRAM_SDWAN Example Root CA"
+vmanage_generated_server_common_name = "shivram-vmanage.example"
+
+# If you prefer your own lab cert bundle instead of generated example files,
+# switch vmanage_cert_mode to "provided" and point these paths at your files.
+vmanage_symantec_root_ca_cert_path = "certs/vmanage/symantec-root-ca.crt"
+vmanage_root_ca_cert_path          = "certs/controllers/root-ca.crt"
+vmanage_server_cert_path           = "certs/vmanage/server.crt"
+vmanage_server_key_path            = "certs/vmanage/server.key"
+vmanage_server_csr_path            = "certs/vmanage/server.csr"
+
+vbond_root_ca_cert_path  = "certs/controllers/root-ca.crt"
+vbond_server_cert_path   = "certs/vbond/generated/server.crt"
+vbond_server_key_path    = "certs/vbond/generated/server.key"
+vbond_server_csr_path    = "certs/vbond/generated/server.csr"
+vsmart_root_ca_cert_path = "certs/controllers/root-ca.crt"
+vsmart_server_cert_path  = "certs/vsmart/generated/server.crt"
+vsmart_server_key_path   = "certs/vsmart/generated/server.key"
+vsmart_server_csr_path   = "certs/vsmart/generated/server.csr"
+c8000v_root_ca_cert_path = "certs/c8000v/generated/root-ca.crt"
+c8000v_server_cert_path  = "certs/c8000v/generated/server.crt"
+c8000v_server_key_path   = "certs/c8000v/generated/server.key"
+c8000v_server_csr_path   = "certs/c8000v/generated/server.csr"
+
+admin_access_cidrs = [
+  "171.70.59.0/24",
+  "128.107.0.0/16",
+  "128.107.241.160/27",
+  "151.186.182.0/24",
+  "151.186.183.0/24",
+  "151.186.186.0/24",
+  "151.186.183.24/32",
+  "151.186.183.87/32",
+  "151.186.183.198/32",
+  "151.186.183.197/32",
+  "151.186.186.24/32",
+  "151.186.186.88/32",
+  "151.186.186.37/32",
+  "151.186.186.102/32",
+  "151.186.182.23/32",
+  "151.186.182.87/32",
+  "151.186.182.211/32",
+  "151.186.182.146/32",
+]
+
+ssh_access_cidrs = [
+  "0.0.0.0/0",
+]
+
+management_public_ips_enabled = true
+transport_public_ips_enabled  = true
+run_vmanage_firstboot_init    = false
+network_ipv4_nameservers      = ["1.1.1.1", "8.8.8.8"]
+ntp_server                    = ""
+vmanage_site_ids              = [110, 111, 112]
+vbond_site_ids                = [120, 121]
+vsmart_site_ids               = [130, 131]
+enabled_controller_keys       = null
+enabled_edge_keys             = null
