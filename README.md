@@ -112,7 +112,7 @@ The module supports three vManage cert modes via `vmanage_cert_mode`:
 
 When `vmanage_cert_mode = "generated"`, Terraform runs:
 
-- [generate_vmanage_example_certs.sh](/Users/ssalemar/terraform-sdwan-modules/stackit/scripts/generate_vmanage_example_certs.sh)
+- [`scripts/generate_vmanage_example_certs.sh`](scripts/generate_vmanage_example_certs.sh)
 
 That script writes an example bundle under `vmanage_generated_cert_dir`, which defaults to:
 
@@ -168,7 +168,7 @@ The active example config points those variables at generated local bundles:
 - `certs/vsmart/generated/*`
 - `certs/c8000v/generated/*`
 
-Regenerate those example files with [generate_vmanage_example_certs.sh](/Users/ssalemar/terraform-sdwan-modules/stackit/scripts/generate_vmanage_example_certs.sh), or replace the paths with your own cert material. The active templates now write controller certs to `/usr/share/viptela/` and c8000v certs to `bootflash:`, then run the corresponding install commands from cloud-init.
+Regenerate those example files with [`scripts/generate_vmanage_example_certs.sh`](scripts/generate_vmanage_example_certs.sh), or replace the paths with your own cert material. The active templates now write controller certs to `/usr/share/viptela/` and c8000v certs to `bootflash:`, then run the corresponding install commands from cloud-init.
 
 The active `terraform.tfvars` now targets the full overlay:
 
@@ -193,18 +193,18 @@ For a normal manual bring-up flow, keep this disabled:
 run_vmanage_firstboot_init = false
 ```
 
-That is the current default in both [variables.tf](/Users/ssalemar/terraform-sdwan-modules/stackit/variables.tf) and [terraform.tfvars](/Users/ssalemar/terraform-sdwan-modules/stackit/terraform.tfvars).
+That is the current default in `variables.tf` and `terraform.tfvars`.
 
 If you later want to run the helper manually for a specific vManage node, use:
 
 ```sh
-bash /Users/ssalemar/terraform-sdwan-modules/stackit/scripts/init_vmanage_firstboot.sh <public-ip> '<admin-password>'
+bash ./scripts/init_vmanage_firstboot.sh <public-ip> '<admin-password>'
 ```
 
 To complete the controller certificate flow after `terraform apply`, run:
 
 ```sh
-python3 /Users/ssalemar/terraform-sdwan-modules/stackit/scripts/post_deploy_controllers.py
+python3 ./scripts/post_deploy_controllers.py
 ```
 
 That script:
@@ -219,7 +219,7 @@ That script:
 To form the 3-node single-tenant vManage cluster after the controller cert flow is complete, run:
 
 ```sh
-python3 /Users/ssalemar/terraform-sdwan-modules/stackit/scripts/bootstrap_vmanage_cluster.py
+python3 ./scripts/bootstrap_vmanage_cluster.py
 ```
 
 That script:
@@ -236,7 +236,7 @@ That script:
 To add the `vSmart` and `vBond` controllers into vManage after the cluster is ready, run:
 
 ```sh
-python3 /Users/ssalemar/terraform-sdwan-modules/stackit/scripts/add_controllers_to_vmanage.py
+python3 ./scripts/add_controllers_to_vmanage.py
 ```
 
 That script:
