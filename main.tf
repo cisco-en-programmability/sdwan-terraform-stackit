@@ -37,18 +37,6 @@ resource "stackit_network" "cluster" {
 
 }
 
-resource "stackit_network" "service" {
-  project_id         = var.project_id
-  name               = format("%s-sdwan-service", var.prefix)
-  dhcp               = false
-  ipv4_gateway       = var.service_network_cidr == null ? null : cidrhost(var.service_network_cidr, 1)
-  ipv4_nameservers   = var.network_ipv4_nameservers
-  ipv4_prefix        = var.service_network_cidr
-  ipv4_prefix_length = var.service_network_cidr == null ? var.service_network_prefix_length : null
-  labels             = merge(var.labels, { role = "service" })
-  routed             = false
-}
-
 resource "stackit_security_group" "management" {
   project_id  = var.project_id
   name        = format("%s-sdwan-management", var.prefix)
@@ -387,39 +375,6 @@ resource "stackit_network_interface" "controller_cluster" {
   ]
 }
 
-resource "stackit_network_interface" "edge_management" {
-  for_each = local.edge_nodes
-
-  project_id         = var.project_id
-  network_id         = stackit_network.management.network_id
-  ipv4               = each.value.mgmt_ip
-  labels             = merge(var.labels, { node = each.key, role = each.value.role, plane = "management" })
-  name               = format("%s-mgmt", each.value.hostname)
-  security_group_ids = [stackit_security_group.management.security_group_id]
-}
-
-resource "stackit_network_interface" "edge_transport" {
-  for_each = local.edge_nodes
-
-  project_id         = var.project_id
-  network_id         = stackit_network.transport.network_id
-  ipv4               = each.value.transport_ip
-  labels             = merge(var.labels, { node = each.key, role = each.value.role, plane = "transport" })
-  name               = format("%s-transport", each.value.hostname)
-  security_group_ids = [stackit_security_group.transport.security_group_id]
-}
-
-resource "stackit_network_interface" "edge_service" {
-  for_each = local.edge_nodes
-
-  project_id = var.project_id
-  network_id = stackit_network.service.network_id
-  ipv4       = each.value.service_ip
-  labels     = merge(var.labels, { node = each.key, role = each.value.role, plane = "service" })
-  name       = format("%s-service", each.value.hostname)
-  security   = false
-}
-
 resource "stackit_public_ip" "controller_management" {
   for_each = var.management_public_ips_enabled ? local.controller_nodes : {}
 
@@ -429,14 +384,6 @@ resource "stackit_public_ip" "controller_management" {
   depends_on           = [stackit_server.controller]
 }
 
-resource "stackit_public_ip" "edge_management" {
-  for_each = var.management_public_ips_enabled ? local.edge_nodes : {}
-
-  project_id           = var.project_id
-  labels               = merge(var.labels, { node = each.key, role = each.value.role, plane = "management" })
-  network_interface_id = stackit_network_interface.edge_management[each.key].network_interface_id
-}
-
 resource "stackit_public_ip" "controller_transport" {
   for_each = var.transport_public_ips_enabled ? local.controller_nodes : {}
 
@@ -444,14 +391,6 @@ resource "stackit_public_ip" "controller_transport" {
   labels               = merge(var.labels, { node = each.key, role = each.value.role, plane = "transport" })
   network_interface_id = stackit_network_interface.controller_transport[each.key].network_interface_id
   depends_on           = [stackit_server.controller]
-}
-
-resource "stackit_public_ip" "edge_transport" {
-  for_each = var.transport_public_ips_enabled ? local.edge_nodes : {}
-
-  project_id           = var.project_id
-  labels               = merge(var.labels, { node = each.key, role = each.value.role, plane = "transport" })
-  network_interface_id = stackit_network_interface.edge_transport[each.key].network_interface_id
 }
 
 resource "terraform_data" "vmanage_generated_certs" {
@@ -760,42 +699,4 @@ resource "terraform_data" "vmanage_initialize" {
   depends_on = [
     terraform_data.vmanage_start,
   ]
-}
-
-resource "stackit_server" "edge" {
-  for_each = local.edge_nodes
-
-  project_id        = var.project_id
-  availability_zone = var.availability_zone
-  labels            = merge(local.all_server_labels, { node = each.key, role = each.value.role })
-  machine_type      = each.value.machine_type
-  name              = each.value.hostname
-  network_interfaces = [
-    stackit_network_interface.edge_management[each.key].network_interface_id,
-    stackit_network_interface.edge_transport[each.key].network_interface_id,
-    stackit_network_interface.edge_service[each.key].network_interface_id,
-  ]
-  user_data = templatefile("${path.module}/cloud-init/c8000v-certs.yaml.tftpl", {
-    admin_password        = var.admin_password
-    hostname              = each.value.hostname
-    ntp_server            = var.ntp_server
-    organization_name     = var.organization_name
-    root_ca_cert          = local.c8000v_root_ca_cert_content
-    service_ip            = each.value.service_ip
-    service_prefix_length = local.service_prefix_length
-    server_cert           = local.c8000v_server_cert_content
-    server_csr            = local.c8000v_server_csr_content
-    server_key            = local.c8000v_server_key_content
-    site_id               = each.value.site_id
-    system_ip             = each.value.system_ip
-    vbond_ip              = local.primary_vbond_transport_ip
-  })
-
-  boot_volume = {
-    performance_class     = null
-    size                  = each.value.boot_volume_size
-    source_id             = each.value.image_id
-    source_type           = "image"
-    delete_on_termination = false
-  }
 }

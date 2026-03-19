@@ -50,7 +50,6 @@ variable "image_ids" {
     vmanage = string
     vsmart  = string
     vbond   = string
-    c8000v  = string
   })
 }
 
@@ -59,7 +58,6 @@ variable "machine_types" {
   type = object({
     vmanage    = string
     controller = string
-    c8000v     = string
   })
 }
 
@@ -68,12 +66,10 @@ variable "boot_volume_sizes" {
   type = object({
     vmanage    = number
     controller = number
-    c8000v     = number
   })
   default = {
     vmanage    = 30
     controller = 12
-    c8000v     = 12
   }
 }
 
@@ -97,7 +93,7 @@ variable "vmanage_prestart_settle_seconds" {
 }
 
 variable "admin_password" {
-  description = "Plain-text admin password used for the c8000v bootstrap."
+  description = "Plain-text admin password used for SD-WAN bootstrap scripts and API workflows."
   type        = string
   sensitive   = true
 }
@@ -227,30 +223,6 @@ variable "vsmart_server_csr_path" {
   default     = ""
 }
 
-variable "c8000v_root_ca_cert_path" {
-  description = "Optional local path to the c8000v root CA certificate written to bootflash:root-ca.crt."
-  type        = string
-  default     = ""
-}
-
-variable "c8000v_server_cert_path" {
-  description = "Optional local path to the c8000v server certificate written to bootflash:server.crt."
-  type        = string
-  default     = ""
-}
-
-variable "c8000v_server_key_path" {
-  description = "Optional local path to the c8000v server private key written to bootflash:server.key."
-  type        = string
-  default     = ""
-}
-
-variable "c8000v_server_csr_path" {
-  description = "Optional local path to the c8000v server CSR written to bootflash:server.csr."
-  type        = string
-  default     = ""
-}
-
 variable "admin_access_cidrs" {
   description = "CIDRs allowed to reach the management and transport public IPs for SSH and HTTPS."
   type        = list(string)
@@ -327,18 +299,6 @@ variable "cluster_network_cidr" {
   }
 }
 
-variable "service_network_cidr" {
-  description = "Service-side network CIDR used by the c8000v nodes."
-  type        = string
-  default     = null
-  nullable    = true
-
-  validation {
-    condition     = var.service_network_cidr == null ? true : can(cidrhost(var.service_network_cidr, 1))
-    error_message = "service_network_cidr must be null or a valid CIDR."
-  }
-}
-
 variable "system_ip_cidr" {
   description = "CIDR used only to allocate SD-WAN system IPs."
   type        = string
@@ -364,12 +324,6 @@ variable "transport_network_prefix_length" {
 
 variable "cluster_network_prefix_length" {
   description = "vManage cluster network prefix length used when cluster_network_cidr is null."
-  type        = number
-  default     = 25
-}
-
-variable "service_network_prefix_length" {
-  description = "Service network prefix length used when service_network_cidr is null."
   type        = number
   default     = 25
 }
@@ -419,32 +373,8 @@ variable "vsmart_site_ids" {
   }
 }
 
-variable "edge_site_ids" {
-  description = "Site IDs for the two c8000v nodes."
-  type        = list(number)
-  default     = [101, 102]
-
-  validation {
-    condition     = length(var.edge_site_ids) == 2
-    error_message = "edge_site_ids must contain exactly two values."
-  }
-}
-
-variable "ntp_server" {
-  description = "Optional NTP server configured on the c8000v nodes."
-  type        = string
-  default     = ""
-}
-
 variable "enabled_controller_keys" {
   description = "Optional subset of controller node keys to deploy. Set to null to deploy all controllers, [] to deploy none."
-  type        = list(string)
-  default     = null
-  nullable    = true
-}
-
-variable "enabled_edge_keys" {
-  description = "Optional subset of c8000v node keys to deploy. Set to null to deploy all edge nodes, [] to deploy none."
   type        = list(string)
   default     = null
   nullable    = true

@@ -5,7 +5,6 @@ This repository provisions a fixed Cisco SD-WAN lab on STACKIT:
 - 3 `vManage`
 - 2 `vBond`
 - 2 `vSmart`
-- 2 `c8000v`
 
 ## Important Files
 

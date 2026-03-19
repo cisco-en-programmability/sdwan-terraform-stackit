@@ -13,19 +13,16 @@ image_ids = {
   vmanage = "replace-with-stackit-image-id"
   vsmart  = "replace-with-stackit-image-id"
   vbond   = "replace-with-stackit-image-id"
-  c8000v  = "replace-with-stackit-image-id"
 }
 
 machine_types = {
   vmanage    = "g3i.28"
   controller = "c3i.4"
-  c8000v     = "c3i.4"
 }
 
 boot_volume_sizes = {
   vmanage    = 30
   controller = 12
-  c8000v     = 12
 }
 
 vmanage_data_disk_size = 1024
@@ -54,10 +51,6 @@ vsmart_root_ca_cert_path = "certs/controllers/root-ca.crt"
 vsmart_server_cert_path  = "certs/vsmart/generated/server.crt"
 vsmart_server_key_path   = "certs/vsmart/generated/server.key"
 vsmart_server_csr_path   = "certs/vsmart/generated/server.csr"
-c8000v_root_ca_cert_path = "certs/c8000v/generated/root-ca.crt"
-c8000v_server_cert_path  = "certs/c8000v/generated/server.crt"
-c8000v_server_key_path   = "certs/c8000v/generated/server.key"
-c8000v_server_csr_path   = "certs/c8000v/generated/server.csr"
 
 admin_access_cidrs = [
   "171.70.59.0/24",
@@ -88,9 +81,7 @@ management_public_ips_enabled = true
 transport_public_ips_enabled  = true
 run_vmanage_firstboot_init    = false
 network_ipv4_nameservers      = ["1.1.1.1", "8.8.8.8"]
-ntp_server                    = ""
 vmanage_site_ids              = [110, 111, 112]
 vbond_site_ids                = [120, 121]
 vsmart_site_ids               = [130, 131]
 enabled_controller_keys       = null
-enabled_edge_keys             = null

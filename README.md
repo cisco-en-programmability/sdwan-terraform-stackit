@@ -5,22 +5,19 @@ This module provisions a fixed Cisco SD-WAN lab on STACKIT:
 - 3 `vManage`
 - 2 `vSmart`
 - 2 `vBond`
-- 2 `c8000v`
 
-It assumes you have already uploaded the four custom images with `stackit image create` and have the resulting image IDs.
+It assumes you have already uploaded the three custom controller images with `stackit image create` and have the resulting image IDs.
 
 ## What It Does
 
-- Creates four networks:
+- Creates three networks:
   - management
   - transport
   - vManage cluster
-  - service
 - Creates separate management and transport security groups
 - Provisions fixed private IPs on the STACKIT NICs while leaving the controller management/transport interfaces on DHCP inside the guest
 - Allocates public IPs on every management and transport NIC by default
 - Bootstraps controllers with STACKIT `user_data` cloud-init
-- Bootstraps the c8000v nodes with day-0 cloud-init
 - Creates and attaches an extra block volume to each vManage node
 - Installs the shared controller root CA through cloud-init so post-deploy certificate APIs can use the same trust chain
 - Keeps the interactive vManage first-boot helper out of normal `terraform apply` unless you explicitly enable it
@@ -29,7 +26,6 @@ Interface layout:
 
 - `vManage`: management (`eth0`, DHCP), transport (`eth1`, DHCP), cluster (`eth2`, static, private only)
 - `vSmart` / `vBond`: management (`eth0`, DHCP), transport (`eth1`, DHCP)
-- `c8000v`: management (`GigabitEthernet1`, DHCP), transport (`GigabitEthernet2`, DHCP), service (`GigabitEthernet3`, static)
 
 All instance names are prefixed with `stackittestuser` by default.
 
@@ -37,9 +33,8 @@ All instance names are prefixed with `stackittestuser` by default.
 
 This scaffold now automates the controller-side lifecycle through a small set of manual post-deploy scripts, but it still stops short of a full end-to-end production overlay:
 
-- c8000v onboarding/device authorization in vManage
 - device template attachment and policy push
-- policy and service configuration above the base controller fabric
+- WAN-edge onboarding and policy configuration above the base controller fabric
 
 That boundary is intentional. Terraform can reliably provision the topology, and the bundled scripts can reliably finish the controller fabric, but the repo should not invent the full edge onboarding and policy workflow without your specific Smart Account, serial/UUID inventory, and vManage preferences.
 
@@ -69,8 +64,8 @@ cp terraform.tfvars.example terraform.tfvars
 
 - `project_id`
 - `organization_name`
-- the four uploaded `image_ids`
-- the three `machine_types`
+- the three uploaded `image_ids`
+- the two `machine_types`
 - `admin_password`
 - `admin_password_hash`
 - `admin_access_cidrs`
@@ -88,8 +83,6 @@ Controller site IDs are configured per node, not as one shared value:
 - `vmanage_site_ids = [110, 111, 112]`
 - `vbond_site_ids = [120, 121]`
 - `vsmart_site_ids = [130, 131]`
-
-The c8000v nodes continue to use `edge_site_ids`.
 
 The controller root CA used by the active workflow is shared across all controllers:
 
@@ -232,7 +225,6 @@ Useful outputs after apply:
 
 - `vmanage_urls`
 - `controller_inventory`
-- `edge_inventory`
 - `primary_vbond_transport_ip`
 
 ## Post-Provision Checks
@@ -250,8 +242,7 @@ Use the output inventory to complete the SD-WAN onboarding flow:
 1. Run `python3 scripts/format_vmanage_data_disks.py`.
 2. Run `python3 scripts/bootstrap_vmanage_cluster.py`.
 3. Run `python3 scripts/cert_api_script.py`.
-4. Authorize/onboard the two c8000v nodes.
-5. Attach templates and push policy so the edges join the overlay.
+4. Authorize/onboard WAN edges and attach templates when you are ready.
 
 ## Notes
 
@@ -264,7 +255,7 @@ Use the output inventory to complete the SD-WAN onboarding flow:
   - `cloud-init/vbond-rootca.yaml.tftpl`
   - `cloud-init/vsmart-rootca.yaml.tftpl`
 - The older direct-device controller cert flow is preserved under `scripts/legacy/` while the new API-driven flow is being validated.
-- The checked-in `terraform.tfvars` is currently set for the full 3 vManage / 2 vBond / 2 vSmart / 2 c8000v overlay. To scope a one-off test deployment, set `enabled_controller_keys` and/or `enabled_edge_keys` to explicit lists such as `["vmanage01"]`.
+- The checked-in `terraform.tfvars` is currently set for the full 3 vManage / 2 vBond / 2 vSmart controller overlay. To scope a one-off test deployment, set `enabled_controller_keys` to an explicit list such as `["vmanage01"]`.
 - The shared controller root CA path in the current local config is `certs/controllers/root-ca.crt`. The matching private key stays local at `certs/controllers/root-ca.key` and is used later by `scripts/cert_api_script.py`.
 - The large `symantec-root-ca.crt` is intentionally not embedded in controller `user_data`, because it exceeds STACKIT's user-data size limit when combined with the day-0 config.
 - The local `certs/` directory is git-ignored so the private key and other local cert material stay out of version control.

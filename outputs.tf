@@ -33,24 +33,6 @@ output "controller_inventory" {
   }
 }
 
-output "edge_inventory" {
-  description = "Private and public addressing for c8000v nodes."
-  value = {
-    for key, node in local.edge_nodes :
-    key => {
-      hostname             = node.hostname
-      management_ip        = node.mgmt_ip
-      management_public_ip = try(stackit_public_ip.edge_management[key].ip, null)
-      transport_ip         = node.transport_ip
-      transport_public_ip  = try(stackit_public_ip.edge_transport[key].ip, null)
-      service_ip           = node.service_ip
-      system_ip            = node.system_ip
-      site_id              = node.site_id
-      server_id            = try(stackit_server.edge[key].server_id, null)
-    }
-  }
-}
-
 output "network_inventory" {
   description = "Resolved STACKIT network prefixes, gateways, nameservers, and routing properties."
   value = {
@@ -74,13 +56,6 @@ output "network_inventory" {
       nameservers = stackit_network.cluster.ipv4_nameservers
       public_ip   = try(stackit_network.cluster.public_ip, null)
       routed      = stackit_network.cluster.routed
-    }
-    service = {
-      prefix      = local.service_prefix
-      gateway     = stackit_network.service.ipv4_gateway
-      nameservers = stackit_network.service.ipv4_nameservers
-      public_ip   = try(stackit_network.service.public_ip, null)
-      routed      = stackit_network.service.routed
     }
   }
 }
