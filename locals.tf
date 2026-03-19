@@ -1,4 +1,12 @@
 locals {
+  mandatory_labels = {
+    image_origin = "vendor"
+    product      = "cisco-sdwan"
+    s1risk       = "RK0027865"
+  }
+
+  all_server_labels = merge(local.mandatory_labels, var.custom_labels)
+
   management_prefix_length = var.management_network_cidr != null ? tonumber(split("/", var.management_network_cidr)[1]) : var.management_network_prefix_length
   transport_prefix_length  = var.transport_network_cidr != null ? tonumber(split("/", var.transport_network_cidr)[1]) : var.transport_network_prefix_length
   cluster_prefix_length    = var.cluster_network_cidr != null ? tonumber(split("/", var.cluster_network_cidr)[1]) : var.cluster_network_prefix_length

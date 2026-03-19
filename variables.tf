@@ -455,3 +455,9 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "custom_labels" {
+  description = "Additional labels merged onto the appliance VM server resources on top of the mandatory Cisco SD-WAN exemption labels."
+  type        = map(string)
+  default     = {}
+}

@@ -75,6 +75,14 @@ cp terraform.tfvars.example terraform.tfvars
 - `admin_password_hash`
 - `admin_access_cidrs`
 
+Appliance VM labels now include a mandatory SentinelOne exemption block on every `stackit_server` resource:
+
+- `image_origin = "vendor"`
+- `product = "cisco-sdwan"`
+- `s1risk = "RK0027865"`
+
+If you want to add extra labels on the appliance VM resources, use `custom_labels`. The older `labels` input still applies to the other supported STACKIT resources in the module.
+
 Controller site IDs are configured per node, not as one shared value:
 
 - `vmanage_site_ids = [110, 111, 112]`

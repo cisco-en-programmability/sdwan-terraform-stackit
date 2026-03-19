@@ -5,6 +5,10 @@ prefix             = "stackittestuser"
 organization_name  = "STACKITTESTUSER_SDWAN"
 vbond_hostname     = "vbond.vbond"
 
+custom_labels = {
+  environment = "lab"
+}
+
 image_ids = {
   vmanage = "replace-with-stackit-image-id"
   vsmart  = "replace-with-stackit-image-id"

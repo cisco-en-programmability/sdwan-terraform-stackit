@@ -523,6 +523,7 @@ resource "stackit_server" "controller" {
   project_id        = var.project_id
   availability_zone = var.availability_zone
   desired_status    = each.value.personality == "vmanage" ? "inactive" : null
+  labels            = merge(local.all_server_labels, { node = each.key, role = each.value.role })
   machine_type      = each.value.machine_type
   name              = each.value.hostname
   network_interfaces = concat(
@@ -766,6 +767,7 @@ resource "stackit_server" "edge" {
 
   project_id        = var.project_id
   availability_zone = var.availability_zone
+  labels            = merge(local.all_server_labels, { node = each.key, role = each.value.role })
   machine_type      = each.value.machine_type
   name              = each.value.hostname
   network_interfaces = [
@@ -790,8 +792,10 @@ resource "stackit_server" "edge" {
   })
 
   boot_volume = {
-    size        = each.value.boot_volume_size
-    source_id   = each.value.image_id
-    source_type = "image"
+    performance_class     = null
+    size                  = each.value.boot_volume_size
+    source_id             = each.value.image_id
+    source_type           = "image"
+    delete_on_termination = false
   }
 }
