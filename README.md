@@ -211,7 +211,8 @@ That script:
 
 - runs the vManage `/dev/vdb` first-boot helper in parallel across all three vManage nodes
 - detects when the storage prompt is already complete and proceeds without waiting on the full vManage GUI stack
-- enforces `vbond ${vbond_hostname}` plus `vpn 0 host ${vbond_hostname} ip <vbond01> <vbond02>` on `vManage` and `vSmart`
+- skips explicit vManage `vbond.vbond` rewrites by default, because new deployments already seed the hostname and both vBond transport IPs via cloud-init
+- exposes `--force-vbond-resolution` only for older deployments that still need the legacy vManage update step
 - installs the shared root CA on all `vManage`, `vBond`, and `vSmart` controllers
 - generates CSRs on each controller, signs them locally with unique certificate serial numbers, installs the signed certs, and verifies `certificate-status Installed`
 - is safe to rerun if a previous attempt partially completed
@@ -249,6 +250,16 @@ That script:
   - trigger `POST /dataservice/certificate/vsmart/list` to sync certificates to vBond
 - waits until vManage reports the selected controllers as reachable with expected control connections up through `/dataservice/device/reachable?personality=...`
 - is safe to rerun; already-registered controllers are skipped and the script can be used in `--verify-only` mode
+
+## Teardown
+
+Prefer the helper script over raw `terraform destroy`:
+
+```sh
+bash ./scripts/teardown_stackit_lab.sh
+```
+
+That helper retries the usual destroy flow and, if needed, stops the vManage nodes and detaches their extra data volumes with the `stackit` CLI before retrying.
 
 ## Outputs
 
@@ -299,6 +310,6 @@ Use the output inventory to complete the SD-WAN onboarding flow:
 - The vManage data disk is still attached before the first real boot by creating the server `inactive`, attaching the extra volume, then starting the node once. That is the closest Terraform/provider-safe equivalent to inline extra-volume server creation on STACKIT.
 - The repository still includes `scripts/bootstrap_vmanage_cluster.py`, but Terraform does not auto-run it. Bring up and validate the standalone vManage nodes first, then run cluster formation explicitly when you are ready.
 - `scripts/bootstrap_vmanage_cluster.py` now derives the 3-node vManage plan from Terraform output by default, so you do not need to hand-author a JSON config for the common single-tenant lab case.
-- `scripts/bootstrap_vmanage_cluster.py` now follows the `adab` cluster workflow more closely by first preparing each node's OOB/cluster IP on that node itself, then adding the secondary nodes to the primary.
+- `scripts/bootstrap_vmanage_cluster.py` uses the cluster/OOB IPs from Terraform output for membership, reaches each node through its management URL, and now prefers the safer flow of preparing the primary first and then adding only missing secondary nodes from the primary.
 - The controller cert flow is now handled by `scripts/post_deploy_controllers.py`, not by waiting for the vManage GUI to become healthy first.
 - If you want a stricter or more internet-exposed underlay policy, adjust the management and transport security group rules in `main.tf`.

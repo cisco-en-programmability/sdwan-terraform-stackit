@@ -4,3 +4,7 @@ terraform.tfstate
 terraform.tfstate.*
 tfplan*
 certs/
+artifacts/
+terraform.tfvars
+__pycache__/
+*.pyc

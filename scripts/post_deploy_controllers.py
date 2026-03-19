@@ -24,14 +24,24 @@ PREFERRED_VMANAGE_DEVICES = "vdb,sdb,xvdb,nvme1n1,hdc,sdc"
 
 
 def run(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=check,
-    )
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=check,
+        )
+    except subprocess.CalledProcessError as exc:
+        stdout = exc.stdout.strip()
+        stderr = exc.stderr.strip()
+        details = [f"Command {exc.cmd!r} failed with exit status {exc.returncode}."]
+        if stdout:
+            details.append(f"stdout:\n{stdout}")
+        if stderr:
+            details.append(f"stderr:\n{stderr}")
+        raise RuntimeError("\n".join(details)) from exc
 
 
 def parse_tfvars_string(tfvars_path: Path, key: str) -> str:
@@ -401,6 +411,7 @@ def configure_vbond_resolution(
         send -- "commit and-quit\r"
         expect {
           -re {Commit complete\.} {}
+          -re {(?m)^[^\n]*#\s*$} {}
           -re {Failed} {
             puts stderr $expect_out(buffer)
             exit 1
@@ -410,11 +421,6 @@ def configure_vbond_resolution(
             exit 124
           }
         }
-
-        send -- "show running-config system | nomore\r"
-        expect -re {(?m)^[^\n]*#\s*$}
-        send -- "show running-config vpn 0 | nomore\r"
-        expect -re {(?m)^[^\n]*#\s*$}
         send -- "exit\r"
         expect eof
         """
@@ -431,6 +437,23 @@ def configure_vbond_resolution(
             "TIMEOUT": str(timeout),
         },
     )
+
+
+def vmanage_has_expected_vbond_resolution(
+    host: str,
+    username: str,
+    password: str,
+    vbond_hostname: str,
+    vbond_ips: list[str],
+) -> bool:
+    system_cfg = ssh_exec(host, username, password, "show running-config system | nomore", timeout=120)
+    vpn0_cfg = ssh_exec(host, username, password, "show running-config vpn 0 | nomore", timeout=120)
+
+    if f"vbond {vbond_hostname}" not in system_cfg:
+        return False
+    if f"host {vbond_hostname} ip" not in vpn0_cfg:
+        return False
+    return all(ip in vpn0_cfg for ip in vbond_ips)
 
 
 def install_certificate(host: str, username: str, password: str, remote_pem_path: str, *, timeout: int = 900) -> None:
@@ -646,6 +669,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--artifacts-dir", default=str(DEFAULT_ARTIFACTS_DIR), help="Directory where CSRs and signed certs will be stored.")
     parser.add_argument("--controllers", default="", help="Comma-separated controller keys to process, for example vmanage01,vbond01.")
     parser.add_argument("--skip-vmanage-disk-init", action="store_true", help="Skip the vManage /dev/vdb first-boot formatting helper.")
+    parser.add_argument("--force-vbond-resolution", action="store_true", help="Force the legacy vManage vBond host/IP update step. New deployments already seed this via cloud-init.")
     parser.add_argument("--skip-cert-install", action="store_true", help="Skip CSR generation, signing, install, and verification.")
     return parser.parse_args()
 
@@ -685,19 +709,32 @@ def main() -> int:
                     future.result()
                     print(f"[vmanage-init-complete] {node['key']} {node['host']}")
 
-    for node in nodes:
-        if node["role"] != "vmanage":
-            continue
-        print(f"[vbond-resolution] {node['key']} {node['host']}")
-        wait_for_port(node["host"], 22, 1800, want_open=True)
-        configure_vbond_resolution(
-            node["host"],
-            username,
-            admin_password,
-            vbond_hostname,
-            vbond_ips,
-            vbond_port,
-        )
+    if args.force_vbond_resolution:
+        for node in nodes:
+            if node["role"] != "vmanage":
+                continue
+            print(f"[vbond-resolution] {node['key']} {node['host']}")
+            wait_for_port(node["host"], 22, 1800, want_open=True)
+            if vmanage_has_expected_vbond_resolution(
+                node["host"],
+                username,
+                admin_password,
+                vbond_hostname,
+                vbond_ips,
+            ):
+                print(f"[vbond-resolution-skip] {node['key']} {node['host']} already configured")
+            else:
+                configure_vbond_resolution(
+                    node["host"],
+                    username,
+                    admin_password,
+                    vbond_hostname,
+                    vbond_ips,
+                    vbond_port,
+                )
+                print(f"[vbond-resolution-updated] {node['key']} {node['host']}")
+    else:
+        print("[vbond-resolution] skipping explicit vManage update; cloud-init already seeds vbond hostname and IPs")
 
     if args.skip_cert_install:
         return 0
