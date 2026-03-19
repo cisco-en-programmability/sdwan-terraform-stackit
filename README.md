@@ -22,7 +22,7 @@ It assumes you have already uploaded the four custom images with `stackit image 
 - Bootstraps controllers with STACKIT `user_data` cloud-init
 - Bootstraps the c8000v nodes with day-0 cloud-init
 - Creates and attaches an extra block volume to each vManage node
-- Stages locally generated or user-provided cert artifacts into the controller and edge guests when configured
+- Installs the shared controller root CA through cloud-init so post-deploy certificate APIs can use the same trust chain
 - Keeps the interactive vManage first-boot helper out of normal `terraform apply` unless you explicitly enable it
 
 Interface layout:
@@ -35,14 +35,13 @@ All instance names are prefixed with `stackittestuser` by default.
 
 ## Important Boundary
 
-This scaffold gets the infrastructure and day-0 bootstrap in place. Terraform by itself does **not** fully automate the 20.18 controller onboarding steps that are still needed to get to a production-like SD-WAN overlay:
+This scaffold now automates the controller-side lifecycle through a small set of manual post-deploy scripts, but it still stops short of a full end-to-end production overlay:
 
-- vManage cluster formation
-- adding the vBond/vSmart controllers into vManage
 - c8000v onboarding/device authorization in vManage
 - device template attachment and policy push
+- policy and service configuration above the base controller fabric
 
-That boundary is intentional. Terraform can reliably provision the topology, but it should not invent the cluster-registration workflow without your specific org, CA, Smart Account, serial/UUID, and vManage preferences.
+That boundary is intentional. Terraform can reliably provision the topology, and the bundled scripts can reliably finish the controller fabric, but the repo should not invent the full edge onboarding and policy workflow without your specific Smart Account, serial/UUID inventory, and vManage preferences.
 
 ## Authentication
 
@@ -84,15 +83,12 @@ Controller site IDs are configured per node, not as one shared value:
 
 The c8000v nodes continue to use `edge_site_ids`.
 
-Certificate files for the current vManage cloud-init install workflow now live under:
+The controller root CA used by the active workflow is shared across all controllers:
 
-- `certs/vmanage/root-ca.crt`
-- `certs/vmanage/server.crt`
-- `certs/vmanage/server.key`
-- `certs/vmanage/server.csr`
-- `certs/vmanage/symantec-root-ca.crt`
+- `certs/controllers/root-ca.crt`
+- `certs/controllers/root-ca.key`
 
-The example and active `terraform.tfvars` both point to those local module paths now.
+Terraform uses the root CA certificate during controller cloud-init. The private key stays local and is used later by the post-deploy certificate API script to sign controller CSRs.
 
 Generate the controller hash with:
 
@@ -100,86 +96,36 @@ Generate the controller hash with:
 openssl passwd -6 'your-password'
 ```
 
-## vManage Certificate Sources
+## Controller Root CA
 
-The module supports three vManage cert modes via `vmanage_cert_mode`:
+Before the active certificate flow runs, the controller root CA must exist locally.
 
-- `generated`: create a local example root CA and vManage server cert bundle with `openssl`, then install those files through cloud-init
-- `provided`: install your own cert files from the paths in `vmanage_*_cert_path`
-- `disabled`: do not inject cert artifacts through cloud-init
+If the files are missing, generate them with:
 
-### Generated Example Certs
+```sh
+bash ./scripts/generate_controller_root_ca.sh \
+  --output-dir ./certs/controllers \
+  --org STACKITTESTUSER_SDWAN \
+  --root-cn 'STACKITTESTUSER_SDWAN Controller Root CA' \
+  --valid-days 3650
+```
 
-When `vmanage_cert_mode = "generated"`, Terraform runs:
+The current controller cloud-init templates are root-CA-only:
 
-- [`scripts/generate_vmanage_example_certs.sh`](scripts/generate_vmanage_example_certs.sh)
+- `cloud-init/vmanage-rootca.yaml.tftpl`
+- `cloud-init/vbond-rootca.yaml.tftpl`
+- `cloud-init/vsmart-rootca.yaml.tftpl`
 
-That script writes an example bundle under `vmanage_generated_cert_dir`, which defaults to:
+That keeps the boot workflow simple:
 
-- `certs/vmanage/generated/root-ca.key`
-- `certs/vmanage/generated/root-ca.crt`
-- `certs/vmanage/generated/server.key`
-- `certs/vmanage/generated/server.csr`
-- `certs/vmanage/generated/server.crt`
+- Terraform/cloud-init provides the root CA and day-0 config.
+- `/dev/vdb` formatting is handled next.
+- vManage cluster formation happens after the data disks are ready.
+- Controller identity certificates are then generated, signed, and installed through vManage APIs.
 
-The generated files are intended for lab bring-up and testing. They are not a production certificate workflow.
-For a real 3-node vManage cluster, prefer `vmanage_cert_mode = "provided"` with per-node signed certs that match your controller identity workflow.
+The older direct-device certificate flow is kept under `scripts/legacy/` as a fallback while the API flow is being validated.
 
-### Bring Your Own Certs
-
-To use your own files instead:
-
-1. Set `vmanage_cert_mode = "provided"`.
-2. Point these variables at your files:
-   - `vmanage_root_ca_cert_path`
-   - `vmanage_server_cert_path`
-   - `vmanage_server_key_path`
-   - `vmanage_server_csr_path`
-3. Apply Terraform again.
-
-The vManage cloud-init template writes the selected files into `/usr/share/viptela/` on the guest and runs the certificate install commands during first boot.
-
-## vBond, vSmart, and c8000v Cert Installation
-
-The module can also install role-specific cert bundles for:
-
-- `vBond`
-- `vSmart`
-- `c8000v`
-
-Those roles use path-based inputs:
-
-- `vbond_root_ca_cert_path`
-- `vbond_server_cert_path`
-- `vbond_server_key_path`
-- `vbond_server_csr_path`
-- `vsmart_root_ca_cert_path`
-- `vsmart_server_cert_path`
-- `vsmart_server_key_path`
-- `vsmart_server_csr_path`
-- `c8000v_root_ca_cert_path`
-- `c8000v_server_cert_path`
-- `c8000v_server_key_path`
-- `c8000v_server_csr_path`
-
-The active example config points those variables at generated local bundles:
-
-- `certs/vbond/generated/*`
-- `certs/vsmart/generated/*`
-- `certs/c8000v/generated/*`
-
-Regenerate those example files with [`scripts/generate_vmanage_example_certs.sh`](scripts/generate_vmanage_example_certs.sh), or replace the paths with your own cert material. The active templates now write controller certs to `/usr/share/viptela/` and c8000v certs to `bootflash:`, then run the corresponding install commands from cloud-init.
-
-The active `terraform.tfvars` now targets the full overlay:
-
-- 3 `vManage`
-- 2 `vBond`
-- 2 `vSmart`
-- 2 `c8000v`
-
-and uses generated local example cert bundles for all roles by default.
-
-## Apply
+## Apply and Bring-Up
 
 ```sh
 terraform init
@@ -201,23 +147,20 @@ If you later want to run the helper manually for a specific vManage node, use:
 bash ./scripts/init_vmanage_firstboot.sh <public-ip> '<admin-password>'
 ```
 
-To complete the controller certificate flow after `terraform apply`, run:
+To complete the active bring-up flow after `terraform apply`, run the steps in this order.
+
+### 1. Format the vManage data disks
 
 ```sh
-python3 ./scripts/post_deploy_controllers.py
+python3 ./scripts/format_vmanage_data_disks.py
 ```
 
 That script:
 
 - runs the vManage `/dev/vdb` first-boot helper in parallel across all three vManage nodes
 - detects when the storage prompt is already complete and proceeds without waiting on the full vManage GUI stack
-- skips explicit vManage `vbond.vbond` rewrites by default, because new deployments already seed the hostname and both vBond transport IPs via cloud-init
-- exposes `--force-vbond-resolution` only for older deployments that still need the legacy vManage update step
-- installs the shared root CA on all `vManage`, `vBond`, and `vSmart` controllers
-- generates CSRs on each controller, signs them locally with unique certificate serial numbers, installs the signed certs, and verifies `certificate-status Installed`
-- is safe to rerun if a previous attempt partially completed
 
-To form the 3-node single-tenant vManage cluster after the controller cert flow is complete, run:
+### 2. Form the 3-node vManage cluster
 
 ```sh
 python3 ./scripts/bootstrap_vmanage_cluster.py
@@ -234,22 +177,36 @@ That script:
   - patient waits for application-server restarts, cluster sync, and cluster health readiness after each step
 - is safe to rerun; if the cluster is already ready it exits without making changes
 
-To add the `vSmart` and `vBond` controllers into vManage after the cluster is ready, run:
+### 3. Add `vSmart` and `vBond`, generate CSRs through vManage, sign locally, and install the signed certs
 
 ```sh
-python3 ./scripts/add_controllers_to_vmanage.py
+python3 ./scripts/cert_api_script.py
 ```
 
 That script:
 
-- derives the target `vSmart` and `vBond` nodes directly from Terraform `controller_inventory`
-- follows the `adab` controller bring-up order:
-  - add `vSmart` first with `POST /dataservice/system/device`
-  - add `vBond` next with `POST /dataservice/system/device`
-  - force `generateCSR = false` because the controller certs are already installed on the nodes
-  - trigger `POST /dataservice/certificate/vsmart/list` to sync certificates to vBond
-- waits until vManage reports the selected controllers as reachable with expected control connections up through `/dataservice/device/reachable?personality=...`
-- is safe to rerun; already-registered controllers are skipped and the script can be used in `--verify-only` mode
+- uploads the shared enterprise controller root CA into vManage settings
+- adds `vSmart` first and `vBond` second with `POST /dataservice/system/device`
+- generates controller CSRs through vManage APIs in this order:
+  - `vmanage01`
+  - `vmanage02`
+  - `vmanage03`
+  - `vbond01`
+  - `vbond02`
+  - `vsmart01`
+  - `vsmart02`
+- pulls the CSR PEMs back from `/dataservice/certificate/data/controller/list`
+- signs them locally with the shared controller root CA using unique serial numbers
+- installs the signed controller certificates back through `/dataservice/certificate/install/signedCert`
+- triggers `POST /dataservice/certificate/vsmart/list` after the installs so vBond receives the updated vSmart certificate information
+- waits until vManage reports the targeted `vSmart` and `vBond` nodes as reachable and UP
+
+### Legacy Fallback
+
+The older direct-device controller cert flow is preserved under `scripts/legacy/`:
+
+- `scripts/legacy/post_deploy_controllers.py`
+- `scripts/legacy/add_controllers_to_vmanage.py`
 
 ## Teardown
 
@@ -282,9 +239,9 @@ After the first apply, verify:
 
 Use the output inventory to complete the SD-WAN onboarding flow:
 
-1. Run `python3 scripts/post_deploy_controllers.py`.
+1. Run `python3 scripts/format_vmanage_data_disks.py`.
 2. Run `python3 scripts/bootstrap_vmanage_cluster.py`.
-3. Run `python3 scripts/add_controllers_to_vmanage.py`.
+3. Run `python3 scripts/cert_api_script.py`.
 4. Authorize/onboard the two c8000v nodes.
 5. Attach templates and push policy so the edges join the overlay.
 
@@ -294,22 +251,18 @@ Use the output inventory to complete the SD-WAN onboarding flow:
 - The management and transport networks keep DHCP enabled. Because each STACKIT NIC has a fixed private IP, the guests receive deterministic DHCP leases plus a gateway and nameservers from the network.
 - The default `terraform.tfvars` pins `network_ipv4_nameservers` to `["1.1.1.1", "8.8.8.8"]` so the DHCP clients on management and transport always receive resolvers. If you prefer the STACKIT network-area defaults instead, set the variable back to `null`.
 - When you provide an explicit network CIDR, the module pins the gateway to the first usable IPv4 address in that subnet. If you let STACKIT allocate a free subnet, STACKIT still creates the gateway and the module exposes it through `network_inventory`.
-- The repo now keeps two vManage cloud-init variants:
-  - `cloud-init/vmanage-basic-working.yaml.tftpl`: the last known-good minimal template without cert injection
-  - `cloud-init/vmanage-basic-certs.yaml.tftpl`: the current active template that writes the generated/provided cert bundle into the runtime cert paths and installs it from cloud-init
-- The repo also keeps backup and active cert templates for the other roles:
-  - `cloud-init/vbond-working.yaml.tftpl` and `cloud-init/vbond-certs.yaml.tftpl`
-  - `cloud-init/vsmart-working.yaml.tftpl` and `cloud-init/vsmart-certs.yaml.tftpl`
-  - `cloud-init/c8000v-working.yaml.tftpl` and `cloud-init/c8000v-certs.yaml.tftpl`
-- The active cert templates no longer use a staging directory. They write to the live cert locations and run the install commands from cloud-init itself.
-- The generated example cert flow uses `openssl` locally through `scripts/generate_vmanage_example_certs.sh`, then injects the resulting files with the same cloud-init path as provided certs.
+- The active controller cloud-init templates are root-CA-only:
+  - `cloud-init/vmanage-rootca.yaml.tftpl`
+  - `cloud-init/vbond-rootca.yaml.tftpl`
+  - `cloud-init/vsmart-rootca.yaml.tftpl`
+- The older direct-device controller cert flow is preserved under `scripts/legacy/` while the new API-driven flow is being validated.
 - The checked-in `terraform.tfvars` is currently set for the full 3 vManage / 2 vBond / 2 vSmart / 2 c8000v overlay. To scope a one-off test deployment, set `enabled_controller_keys` and/or `enabled_edge_keys` to explicit lists such as `["vmanage01"]`.
-- The generated local cert flow is role-scoped today: one generated bundle for `vmanage`, one for `vbond`, one for `vsmart`, and one for `c8000v`. That is sufficient for staging and first-boot validation, but for a real controller cluster use per-node signed certs via the `provided` paths.
-- The large `symantec-root-ca.crt` is intentionally not embedded in `user_data`, because it exceeds STACKIT's user-data size limit when combined with the day-0 config and other staged files.
+- The shared controller root CA path in the current local config is `certs/controllers/root-ca.crt`. The matching private key stays local at `certs/controllers/root-ca.key` and is used later by `scripts/cert_api_script.py`.
+- The large `symantec-root-ca.crt` is intentionally not embedded in controller `user_data`, because it exceeds STACKIT's user-data size limit when combined with the day-0 config.
 - The local `certs/` directory is git-ignored so the private key and other local cert material stay out of version control.
 - The vManage data disk is still attached before the first real boot by creating the server `inactive`, attaching the extra volume, then starting the node once. That is the closest Terraform/provider-safe equivalent to inline extra-volume server creation on STACKIT.
 - The repository still includes `scripts/bootstrap_vmanage_cluster.py`, but Terraform does not auto-run it. Bring up and validate the standalone vManage nodes first, then run cluster formation explicitly when you are ready.
 - `scripts/bootstrap_vmanage_cluster.py` now derives the 3-node vManage plan from Terraform output by default, so you do not need to hand-author a JSON config for the common single-tenant lab case.
 - `scripts/bootstrap_vmanage_cluster.py` uses the cluster/OOB IPs from Terraform output for membership, reaches each node through its management URL, and now prefers the safer flow of preparing the primary first and then adding only missing secondary nodes from the primary.
-- The controller cert flow is now handled by `scripts/post_deploy_controllers.py`, not by waiting for the vManage GUI to become healthy first.
+- The active controller cert flow is now handled by `scripts/cert_api_script.py`, which adds `vSmart`/`vBond`, generates CSRs through vManage APIs, signs them locally, and installs the signed certificates back through vManage APIs.
 - If you want a stricter or more internet-exposed underlay policy, adjust the management and transport security group rules in `main.tf`.
