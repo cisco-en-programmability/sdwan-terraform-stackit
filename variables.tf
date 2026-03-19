@@ -18,7 +18,7 @@ variable "availability_zone" {
 variable "prefix" {
   description = "Resource name prefix."
   type        = string
-  default     = "shivram"
+  default     = "stackittestuser"
 }
 
 variable "organization_name" {

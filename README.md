@@ -31,7 +31,7 @@ Interface layout:
 - `vSmart` / `vBond`: management (`eth0`, DHCP), transport (`eth1`, DHCP)
 - `c8000v`: management (`GigabitEthernet1`, DHCP), transport (`GigabitEthernet2`, DHCP), service (`GigabitEthernet3`, static)
 
-All instance names are prefixed with `shivram` by default.
+All instance names are prefixed with `stackittestuser` by default.
 
 ## Important Boundary
 

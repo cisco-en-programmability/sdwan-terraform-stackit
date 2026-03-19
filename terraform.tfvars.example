@@ -1,8 +1,8 @@
 project_id         = "00000000-0000-0000-0000-000000000000"
 region             = "eu01"
 availability_zone  = "eu01-1"
-prefix             = "shivram"
-organization_name  = "SHIVRAM_SDWAN"
+prefix             = "stackittestuser"
+organization_name  = "STACKITTESTUSER_SDWAN"
 vbond_hostname     = "vbond.vbond"
 
 image_ids = {
@@ -31,8 +31,8 @@ admin_password_hash = "$6$replace-with-openssl-passwd-6-output"
 ssh_public_key      = "ssh-ed25519 AAAA..."
 vmanage_cert_mode                  = "disabled"
 vmanage_generated_cert_dir         = "certs/vmanage/generated"
-vmanage_generated_root_common_name = "SHIVRAM_SDWAN Example Root CA"
-vmanage_generated_server_common_name = "shivram-vmanage.example"
+vmanage_generated_root_common_name = "STACKITTESTUSER_SDWAN Example Root CA"
+vmanage_generated_server_common_name = "stackittestuser-vmanage.example"
 
 # If you prefer your own lab cert bundle instead of generated example files,
 # switch vmanage_cert_mode to "provided" and point these paths at your files.

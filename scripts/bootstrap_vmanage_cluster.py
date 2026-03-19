@@ -17,7 +17,7 @@ The config file is a JSON document with at least:
   "state_file": "/var/lib/vmanage-cluster-bootstrap/configured",
   "nodes": [
     {
-      "hostname": "shivram-vmanage-01",
+      "hostname": "stackittestuser-vmanage-01",
       "management_url": "https://10.0.0.11",
       "cluster_ip": "10.0.1.11",
       "system_ip": "10.255.0.11",
