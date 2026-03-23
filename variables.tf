@@ -110,6 +110,17 @@ variable "ssh_public_key" {
   default     = ""
 }
 
+variable "controller_certificate_method" {
+  description = "Controller certificate automation method: cisco_pki or enterprise_local. cisco_pki is the default and uses the Cisco PKI flow after deploy."
+  type        = string
+  default     = "cisco_pki"
+
+  validation {
+    condition     = contains(["cisco_pki", "enterprise_local"], var.controller_certificate_method)
+    error_message = "controller_certificate_method must be one of: cisco_pki, enterprise_local."
+  }
+}
+
 variable "vmanage_cert_mode" {
   description = "How vManage certificate artifacts are sourced: generated, provided, or disabled."
   type        = string

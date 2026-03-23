@@ -42,7 +42,11 @@ log() {
 }
 
 tf_destroy() {
-  "$TF" -chdir="$REPO_DIR" destroy -auto-approve "${DESTROY_ARGS[@]}"
+  if ((${#DESTROY_ARGS[@]} > 0)); then
+    "$TF" -chdir="$REPO_DIR" destroy -auto-approve "${DESTROY_ARGS[@]}"
+  else
+    "$TF" -chdir="$REPO_DIR" destroy -auto-approve
+  fi
 }
 
 get_controller_inventory() {

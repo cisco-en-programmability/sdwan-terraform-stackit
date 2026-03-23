@@ -30,13 +30,22 @@ vmanage_data_disk_size = 1024
 admin_password      = "replace-with-a-strong-password"
 admin_password_hash = "$6$replace-with-openssl-passwd-6-output"
 ssh_public_key      = "ssh-ed25519 AAAA..."
+controller_certificate_method     = "cisco_pki"
+
+# cisco_pki is the default controller certificate flow.
+# It uses the default Cisco trust bundle in the image, does not inject a root CA
+# through cloud-init, and will later prompt for Cisco Smart Account credentials
+# during ./scripts/cert_api_script.py. The Smart Account organization must match
+# organization_name above.
+
 vmanage_cert_mode                  = "disabled"
 vmanage_generated_cert_dir         = "certs/vmanage/generated"
 vmanage_generated_root_common_name = "STACKITTESTUSER_SDWAN Example Root CA"
 vmanage_generated_server_common_name = "stackittestuser-vmanage.example"
 
-# If you prefer your own lab cert bundle instead of generated example files,
-# switch vmanage_cert_mode to "provided" and point these paths at your files.
+# If you prefer the older enterprise-local CA flow instead of Cisco PKI,
+# set controller_certificate_method = "enterprise_local". Then point these paths
+# at your local CA/cert material as needed.
 vmanage_symantec_root_ca_cert_path = "certs/vmanage/symantec-root-ca.crt"
 vmanage_root_ca_cert_path          = "certs/controllers/root-ca.crt"
 vmanage_server_cert_path           = "certs/vmanage/server.crt"

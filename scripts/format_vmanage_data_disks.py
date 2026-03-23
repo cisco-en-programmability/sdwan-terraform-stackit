@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Handle the interactive vManage /dev/vdb first-boot flow in parallel."""
+"""Handle the interactive vManage /dev/vdb first-boot flow in parallel.
+
+This stage only passes when each selected vManage node confirms that
+/opt/data is mounted as a separate filesystem after any first-boot reboot.
+"""
 
 from __future__ import annotations
 
@@ -120,6 +124,7 @@ def main() -> int:
     failures: List[str] = []
     max_workers = max(1, min(args.max_parallel, len(nodes)))
     log(f"Formatting workflow will run for {len(nodes)} vManage node(s) with {max_workers} parallel worker(s)")
+    log("Each worker will validate that /opt/data is mounted separately before reporting success")
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_map = {

@@ -64,3 +64,11 @@ output "primary_vbond_transport_ip" {
   description = "Private transport IP used by the day-0 bootstrap as the initial vBond target."
   value       = local.primary_vbond_transport_ip
 }
+
+output "certificate_flow_notice" {
+  description = "Post-deploy certificate guidance for the currently selected controller certificate method."
+  value = var.controller_certificate_method == "cisco_pki" ? format(
+    "controller_certificate_method is cisco_pki. After terraform apply, data-disk formatting, and vManage cluster formation, run ./scripts/cert_api_script.py. Have a Cisco Smart Account username/password ready, and ensure the Cisco Smart Account organization matches organization_name=%s.",
+    var.organization_name
+  ) : "controller_certificate_method is enterprise_local. After terraform apply, data-disk formatting, and vManage cluster formation, run ./scripts/cert_api_script.py to complete the enterprise-local controller certificate flow."
+}

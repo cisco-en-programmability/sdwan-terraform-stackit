@@ -10,7 +10,7 @@ This repository provisions a fixed Cisco SD-WAN lab on STACKIT:
 
 - `main.tf`, `locals.tf`, `variables.tf`, `outputs.tf`: Terraform topology and outputs.
 - `cloud-init/`: role-specific day-0 templates.
-- `scripts/format_vmanage_data_disks.py`: parallel `/dev/vdb` first-boot handling for all vManage nodes.
+- `scripts/format_vmanage_data_disks.py`: parallel `/dev/vdb` first-boot handling for all vManage nodes, with strict `/opt/data` mount validation before success.
 - `scripts/bootstrap_vmanage_cluster.py`: 3-node vManage cluster formation.
 - `scripts/cert_api_script.py`: add `vSmart`/`vBond`, generate controller CSRs through vManage APIs, sign locally, install signed certs through vManage APIs, and wait for controller reachability.
 - `scripts/legacy/post_deploy_controllers.py`: legacy direct-device controller cert flow kept as a fallback.

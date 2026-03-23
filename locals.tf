@@ -24,6 +24,9 @@ locals {
   admin_tcp_ports     = [22, 443, 8443]
   primary_vmanage_key = "vmanage01"
 
+  controller_certificate_method_cisco_pki       = var.controller_certificate_method == "cisco_pki"
+  controller_certificate_method_enterprise_local = var.controller_certificate_method == "enterprise_local"
+
   vmanage_cert_mode_generated = var.vmanage_cert_mode == "generated"
   vmanage_cert_mode_provided  = var.vmanage_cert_mode == "provided"
 
@@ -76,9 +79,11 @@ locals {
     startswith(var.vmanage_symantec_root_ca_cert_path, "/") ? var.vmanage_symantec_root_ca_cert_path : "${path.module}/${var.vmanage_symantec_root_ca_cert_path}"
   )
   vmanage_symantec_root_ca_cert_content = local.vmanage_symantec_root_ca_cert_path_resolved != "" && fileexists(local.vmanage_symantec_root_ca_cert_path_resolved) ? trimspace(file(local.vmanage_symantec_root_ca_cert_path_resolved)) : ""
-  vmanage_root_ca_cert_content = local.vmanage_cert_mode_generated ? trimspace(data.local_file.vmanage_generated_root_ca[0].content) : (
-    local.vmanage_cert_mode_provided && local.vmanage_root_ca_cert_path_resolved != "" && fileexists(local.vmanage_root_ca_cert_path_resolved) ? trimspace(file(local.vmanage_root_ca_cert_path_resolved)) : ""
-  )
+  vmanage_root_ca_cert_content = local.controller_certificate_method_enterprise_local ? (
+    local.vmanage_cert_mode_generated ? trimspace(data.local_file.vmanage_generated_root_ca[0].content) : (
+      local.vmanage_cert_mode_provided && local.vmanage_root_ca_cert_path_resolved != "" && fileexists(local.vmanage_root_ca_cert_path_resolved) ? trimspace(file(local.vmanage_root_ca_cert_path_resolved)) : ""
+    )
+  ) : ""
   vmanage_server_cert_content = local.vmanage_cert_mode_generated ? trimspace(data.local_file.vmanage_generated_server_cert[0].content) : (
     local.vmanage_cert_mode_provided && local.vmanage_server_cert_path_resolved != "" && fileexists(local.vmanage_server_cert_path_resolved) ? trimspace(file(local.vmanage_server_cert_path_resolved)) : ""
   )
@@ -88,11 +93,11 @@ locals {
   vmanage_server_csr_content = local.vmanage_cert_mode_generated ? trimspace(data.local_file.vmanage_generated_server_csr[0].content) : (
     local.vmanage_cert_mode_provided && local.vmanage_server_csr_path_resolved != "" && fileexists(local.vmanage_server_csr_path_resolved) ? trimspace(file(local.vmanage_server_csr_path_resolved)) : ""
   )
-  vbond_root_ca_cert_content  = local.vbond_root_ca_cert_path_resolved != "" && fileexists(local.vbond_root_ca_cert_path_resolved) ? trimspace(file(local.vbond_root_ca_cert_path_resolved)) : ""
+  vbond_root_ca_cert_content  = local.controller_certificate_method_enterprise_local && local.vbond_root_ca_cert_path_resolved != "" && fileexists(local.vbond_root_ca_cert_path_resolved) ? trimspace(file(local.vbond_root_ca_cert_path_resolved)) : ""
   vbond_server_cert_content   = local.vbond_server_cert_path_resolved != "" && fileexists(local.vbond_server_cert_path_resolved) ? trimspace(file(local.vbond_server_cert_path_resolved)) : ""
   vbond_server_key_content    = local.vbond_server_key_path_resolved != "" && fileexists(local.vbond_server_key_path_resolved) ? trimspace(file(local.vbond_server_key_path_resolved)) : ""
   vbond_server_csr_content    = local.vbond_server_csr_path_resolved != "" && fileexists(local.vbond_server_csr_path_resolved) ? trimspace(file(local.vbond_server_csr_path_resolved)) : ""
-  vsmart_root_ca_cert_content = local.vsmart_root_ca_cert_path_resolved != "" && fileexists(local.vsmart_root_ca_cert_path_resolved) ? trimspace(file(local.vsmart_root_ca_cert_path_resolved)) : ""
+  vsmart_root_ca_cert_content = local.controller_certificate_method_enterprise_local && local.vsmart_root_ca_cert_path_resolved != "" && fileexists(local.vsmart_root_ca_cert_path_resolved) ? trimspace(file(local.vsmart_root_ca_cert_path_resolved)) : ""
   vsmart_server_cert_content  = local.vsmart_server_cert_path_resolved != "" && fileexists(local.vsmart_server_cert_path_resolved) ? trimspace(file(local.vsmart_server_cert_path_resolved)) : ""
   vsmart_server_key_content   = local.vsmart_server_key_path_resolved != "" && fileexists(local.vsmart_server_key_path_resolved) ? trimspace(file(local.vsmart_server_key_path_resolved)) : ""
   vsmart_server_csr_content   = local.vsmart_server_csr_path_resolved != "" && fileexists(local.vsmart_server_csr_path_resolved) ? trimspace(file(local.vsmart_server_csr_path_resolved)) : ""

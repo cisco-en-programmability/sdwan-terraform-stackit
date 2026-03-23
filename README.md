@@ -15,11 +15,14 @@ It assumes you have already uploaded the three custom controller images with `st
   - transport
   - vManage cluster
 - Creates separate management and transport security groups
+- Allows every controller public IP to reach every other controller public IP on management and transport from the initial Terraform deployment
+- Opens SD-WAN control port `12346` explicitly on the transport security group
 - Provisions fixed private IPs on the STACKIT NICs while leaving the controller management/transport interfaces on DHCP inside the guest
 - Allocates public IPs on every management and transport NIC by default
 - Bootstraps controllers with STACKIT `user_data` cloud-init
 - Creates and attaches an extra block volume to each vManage node
-- Installs the shared controller root CA through cloud-init so post-deploy certificate APIs can use the same trust chain
+- Defaults controller certificates to Cisco PKI, leaving the built-in Cisco trust bundle in the image untouched
+- Keeps an `enterprise_local` fallback that can inject a shared controller root CA through cloud-init
 - Keeps the interactive vManage first-boot helper out of normal `terraform apply` unless you explicitly enable it
 
 Interface layout:
@@ -84,12 +87,16 @@ Controller site IDs are configured per node, not as one shared value:
 - `vbond_site_ids = [120, 121]`
 - `vsmart_site_ids = [130, 131]`
 
-The controller root CA used by the active workflow is shared across all controllers:
+The default controller certificate flow is `cisco_pki`:
+
+- no root CA is injected through cloud-init
+- `./scripts/cert_api_script.py` prompts for Cisco Smart Account credentials at runtime
+- the Smart Account organization must match `organization_name`
+
+The fallback `enterprise_local` controller certificate flow uses a shared root CA across all controllers:
 
 - `certs/controllers/root-ca.crt`
 - `certs/controllers/root-ca.key`
-
-Terraform uses the root CA certificate during controller cloud-init. The private key stays local and is used later by the post-deploy certificate API script to sign controller CSRs.
 
 Generate the controller hash with:
 
@@ -97,11 +104,19 @@ Generate the controller hash with:
 openssl passwd -6 'your-password'
 ```
 
-## Controller Root CA
+## Controller Certificate Methods
 
-Before the active certificate flow runs, the controller root CA must exist locally.
+`controller_certificate_method` defaults to `cisco_pki`.
 
-If the files are missing, generate them with:
+Use the default when:
+
+- you want vManage to use Cisco PKI
+- you have a Cisco Smart Account whose organization matches `organization_name`
+- you do not want to inject a local controller root CA during cloud-init
+
+If you switch to `enterprise_local`, the controller root CA must exist locally before the certificate flow runs.
+
+Generate it with:
 
 ```sh
 bash ./scripts/generate_controller_root_ca.sh \
@@ -111,18 +126,20 @@ bash ./scripts/generate_controller_root_ca.sh \
   --valid-days 3650
 ```
 
-The current controller cloud-init templates are root-CA-only:
+The controller cloud-init templates are:
 
 - `cloud-init/vmanage-rootca.yaml.tftpl`
 - `cloud-init/vbond-rootca.yaml.tftpl`
 - `cloud-init/vsmart-rootca.yaml.tftpl`
 
+They always provide day-0 config. They only inject the root CA when `controller_certificate_method = "enterprise_local"`.
+
 That keeps the boot workflow simple:
 
-- Terraform/cloud-init provides the root CA and day-0 config.
+- Terraform/cloud-init provides day-0 config.
 - `/dev/vdb` formatting is handled next.
 - vManage cluster formation happens after the data disks are ready.
-- Controller identity certificates are then generated, signed, and installed through vManage APIs.
+- Controller identity certificates are then handled through `./scripts/cert_api_script.py` using either Cisco PKI or the enterprise-local fallback.
 
 The older direct-device certificate flow is kept under `scripts/legacy/` as a fallback while the API flow is being validated.
 
@@ -159,7 +176,8 @@ python3 ./scripts/format_vmanage_data_disks.py
 That script:
 
 - runs the vManage `/dev/vdb` first-boot helper in parallel across all three vManage nodes
-- detects when the storage prompt is already complete and proceeds without waiting on the full vManage GUI stack
+- does not treat early HTTPS as proof that first-boot storage is complete
+- only returns success after each node confirms `/opt/data` is mounted as a separate filesystem
 
 ### 2. Form the 3-node vManage cluster
 
@@ -184,9 +202,10 @@ That script:
 python3 ./scripts/cert_api_script.py
 ```
 
-That script:
+If `controller_certificate_method = "cisco_pki"` which is the default, that script:
 
-- uploads the shared enterprise controller root CA into vManage settings
+- prompts for Cisco Smart Account username and password without storing the password on disk
+- validates the Smart Account configuration on vManage
 - adds `vSmart` first and `vBond` second with `POST /dataservice/system/device`
 - generates controller CSRs through vManage APIs in this order:
   - `vmanage01`
@@ -196,11 +215,16 @@ That script:
   - `vbond02`
   - `vsmart01`
   - `vsmart02`
-- pulls the CSR PEMs back from `/dataservice/certificate/data/controller/list`
-- signs them locally with the shared controller root CA using unique serial numbers
-- installs the signed controller certificates back through `/dataservice/certificate/install/signedCert`
+- waits for Cisco PKI to install the controller certificates
 - triggers `POST /dataservice/certificate/vsmart/list` after the installs so vBond receives the updated vSmart certificate information
 - waits until vManage reports the targeted `vSmart` and `vBond` nodes as reachable and UP
+
+If `controller_certificate_method = "enterprise_local"`, the same script falls back to the previous flow:
+
+- uploads the shared enterprise controller root CA into vManage settings
+- pulls the CSR PEMs back from vManage certificate inventory APIs
+- signs them locally with the shared controller root CA using unique serial numbers
+- installs the signed controller certificates back through `/dataservice/certificate/install/signedCert`
 
 ### Legacy Fallback
 
@@ -250,13 +274,13 @@ Use the output inventory to complete the SD-WAN onboarding flow:
 - The management and transport networks keep DHCP enabled. Because each STACKIT NIC has a fixed private IP, the guests receive deterministic DHCP leases plus a gateway and nameservers from the network.
 - The default `terraform.tfvars` pins `network_ipv4_nameservers` to `["1.1.1.1", "8.8.8.8"]` so the DHCP clients on management and transport always receive resolvers. If you prefer the STACKIT network-area defaults instead, set the variable back to `null`.
 - When you provide an explicit network CIDR, the module pins the gateway to the first usable IPv4 address in that subnet. If you let STACKIT allocate a free subnet, STACKIT still creates the gateway and the module exposes it through `network_inventory`.
-- The active controller cloud-init templates are root-CA-only:
+- The active controller cloud-init templates are day-0-only by default and only inject a root CA when `controller_certificate_method = "enterprise_local"`:
   - `cloud-init/vmanage-rootca.yaml.tftpl`
   - `cloud-init/vbond-rootca.yaml.tftpl`
   - `cloud-init/vsmart-rootca.yaml.tftpl`
 - The older direct-device controller cert flow is preserved under `scripts/legacy/` while the new API-driven flow is being validated.
 - The checked-in `terraform.tfvars` is currently set for the full 3 vManage / 2 vBond / 2 vSmart controller overlay. To scope a one-off test deployment, set `enabled_controller_keys` to an explicit list such as `["vmanage01"]`.
-- The shared controller root CA path in the current local config is `certs/controllers/root-ca.crt`. The matching private key stays local at `certs/controllers/root-ca.key` and is used later by `scripts/cert_api_script.py`.
+- When `controller_certificate_method = "enterprise_local"`, the shared controller root CA path in the current local config is `certs/controllers/root-ca.crt`. The matching private key stays local at `certs/controllers/root-ca.key` and is used later by `scripts/cert_api_script.py`.
 - The large `symantec-root-ca.crt` is intentionally not embedded in controller `user_data`, because it exceeds STACKIT's user-data size limit when combined with the day-0 config.
 - The local `certs/` directory is git-ignored so the private key and other local cert material stay out of version control.
 - The vManage data disk is still attached before the first real boot by creating the server `inactive`, attaching the extra volume, then starting the node once. That is the closest Terraform/provider-safe equivalent to inline extra-volume server creation on STACKIT.
@@ -264,4 +288,5 @@ Use the output inventory to complete the SD-WAN onboarding flow:
 - `scripts/bootstrap_vmanage_cluster.py` now derives the 3-node vManage plan from Terraform output by default, so you do not need to hand-author a JSON config for the common single-tenant lab case.
 - `scripts/bootstrap_vmanage_cluster.py` uses the cluster/OOB IPs from Terraform output for membership, reaches each node through its management URL, and now prefers the safer flow of preparing the primary first and then adding only missing secondary nodes from the primary.
 - The active controller cert flow is now handled by `scripts/cert_api_script.py`, which adds `vSmart`/`vBond`, generates CSRs through vManage APIs, signs them locally, and installs the signed certificates back through vManage APIs.
+- The default underlay policy now includes controller-public-IP peer allowlisting on both management and transport, plus explicit `12346/TCP` and `12346/UDP` ingress on transport for SD-WAN control-plane bring-up.
 - If you want a stricter or more internet-exposed underlay policy, adjust the management and transport security group rules in `main.tf`.

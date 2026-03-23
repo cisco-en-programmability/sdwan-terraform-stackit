@@ -438,7 +438,6 @@ def configure_vbond_resolution(
         },
     )
 
-
 def vmanage_has_expected_vbond_resolution(
     host: str,
     username: str,

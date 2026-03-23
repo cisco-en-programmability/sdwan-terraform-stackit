@@ -10,6 +10,7 @@ https_host="${5:-$host}"
 ssh_timeout_seconds="${VMANAGE_INIT_SSH_TIMEOUT_SECONDS:-900}"
 reboot_timeout_seconds="${VMANAGE_INIT_REBOOT_TIMEOUT_SECONDS:-1200}"
 https_timeout_seconds="${VMANAGE_INIT_HTTPS_TIMEOUT_SECONDS:-3600}"
+data_mount_timeout_seconds="${VMANAGE_INIT_DATA_MOUNT_TIMEOUT_SECONDS:-5400}"
 wait_for_https_after_init="${VMANAGE_INIT_WAIT_FOR_HTTPS:-0}"
 
 log() {
@@ -81,43 +82,82 @@ wait_for_https() {
   return 1
 }
 
-wait_for_bootstrap_channel() {
-  local ssh_host="$1"
-  local gui_host="$2"
-  local timeout_seconds="$3"
-  local deadline=$((SECONDS + timeout_seconds))
-  local last_notice=0
+check_data_mount() {
+  local target_host="$1"
+  local output=""
+  local shell_rc=0
+  local source_line=""
 
-  while (( SECONDS < deadline )); do
-    if nc -z -w 2 "$ssh_host" 22 >/dev/null 2>&1; then
-      printf 'ssh'
-      return 0
-    fi
-    if curl --silent --show-error --insecure --connect-timeout 5 --max-time 10 "https://${gui_host}:8443" >/dev/null 2>&1; then
-      printf 'https'
-      return 0
-    fi
-    if curl --silent --show-error --insecure --connect-timeout 5 --max-time 10 "https://${gui_host}" >/dev/null 2>&1; then
-      printf 'https'
-      return 0
-    fi
-    if (( SECONDS - last_notice >= 60 )); then
-      log "waiting for bootstrap channel on ${ssh_host}/${gui_host}"
-      last_notice=$SECONDS
-    fi
-    sleep 5
-  done
+  set +e
+  output="$(
+    printf '%s\n%s\n' \
+      "vshell" \
+      "mountpoint -q /opt/data && findmnt -n -o SOURCE /opt/data | sed 's/^/__OPT_DATA_SOURCE__ /' || echo __OPT_DATA_MISSING__" \
+      | sshpass -p "$password" ssh \
+          -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          -o ConnectTimeout=10 \
+          -o LogLevel=ERROR \
+          "${user}@${target_host}" 2>&1
+  )"
+  shell_rc=$?
+  set -e
 
-  return 1
+  if grep -Eiq 'select storage device to use:|would you like to format .*\(y/n\):' <<<"$output"; then
+    echo "interactive storage prompt still present on $target_host" >&2
+    return 20
+  fi
+
+  if (( shell_rc != 0 )); then
+    if [[ -n "$output" ]]; then
+      echo "$output" >&2
+    fi
+    echo "ssh session ended before /opt/data validation completed on $target_host" >&2
+    return 24
+  fi
+
+  source_line="$(grep -m1 '__OPT_DATA_SOURCE__ ' <<<"$output" || true)"
+  if [[ -n "$source_line" ]]; then
+    echo "[$target_host] /opt/data mounted from ${source_line#__OPT_DATA_SOURCE__ }" >&2
+    return 0
+  fi
+
+  if grep -q '__OPT_DATA_MISSING__' <<<"$output"; then
+    echo "/opt/data is not mounted separately on $target_host yet" >&2
+    return 22
+  fi
+
+  if [[ -n "$output" ]]; then
+    echo "$output" >&2
+  fi
+  echo "timed out validating /opt/data on $target_host" >&2
+  return 23
 }
 
-log "waiting for SSH or HTTPS bootstrap channel"
-bootstrap_channel="$(wait_for_bootstrap_channel "$host" "$https_host" "$ssh_timeout_seconds")"
+wait_for_data_mount() {
+  local target_host="$1"
+  local timeout_seconds="$2"
+  local deadline=$((SECONDS + timeout_seconds))
+  local last_notice=0
+  local rc=1
 
-if [[ "${bootstrap_channel}" != "ssh" ]]; then
-  log "HTTPS is already available; skipping interactive first-boot handling"
-  exit 0
-fi
+  while (( SECONDS < deadline )); do
+    if check_data_mount "$target_host"; then
+      return 0
+    fi
+    rc=$?
+    if (( SECONDS - last_notice >= 60 )); then
+      log "waiting for /opt/data to be mounted separately on ${target_host}"
+      last_notice=$SECONDS
+    fi
+    sleep 15
+  done
+
+  return "$rc"
+}
+
+log "waiting for SSH because /dev/vdb validation requires an interactive login"
+wait_for_port "$host" 22 "$ssh_timeout_seconds"
 
 log "connecting over SSH for interactive first-boot handling"
 expect_rc=0
@@ -262,12 +302,14 @@ expect_rc=$?
 set -e
 
 if [[ $expect_rc -eq 10 ]]; then
+  log "no interactive first-boot prompt detected; validating /opt/data before proceeding"
+  wait_for_data_mount "$host" "$data_mount_timeout_seconds"
   if [[ "$wait_for_https_after_init" == "1" ]]; then
-    log "no interactive first-boot prompt detected; waiting for HTTPS because VMANAGE_INIT_WAIT_FOR_HTTPS=1"
+    log "validated /opt/data; waiting for HTTPS because VMANAGE_INIT_WAIT_FOR_HTTPS=1"
     wait_for_https "$https_host" "$https_timeout_seconds"
     log "HTTPS is available"
   else
-    log "no interactive first-boot prompt detected; proceeding without waiting for HTTPS"
+    log "/opt/data validation completed; proceeding without waiting for HTTPS"
   fi
   exit 0
 elif [[ $expect_rc -ne 0 ]]; then
@@ -280,10 +322,13 @@ if wait_for_port_down "$host" 22 300; then
   wait_for_port "$host" 22 "$reboot_timeout_seconds"
 fi
 
+log "validating /opt/data after the first-boot reboot"
+wait_for_data_mount "$host" "$data_mount_timeout_seconds"
+
 if [[ "$wait_for_https_after_init" == "1" ]]; then
-  log "waiting for vManage HTTPS after reboot because VMANAGE_INIT_WAIT_FOR_HTTPS=1"
+  log "/opt/data validation succeeded; waiting for vManage HTTPS because VMANAGE_INIT_WAIT_FOR_HTTPS=1"
   wait_for_https "$https_host" "$https_timeout_seconds"
   log "HTTPS is available"
 else
-  log "SSH is back after reboot; proceeding without waiting for HTTPS"
+  log "SSH is back and /opt/data is mounted; proceeding without waiting for HTTPS"
 fi
