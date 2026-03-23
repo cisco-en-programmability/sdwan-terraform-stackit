@@ -184,4 +184,8 @@ locals {
   primary_vbond_key          = "vbond01"
   primary_vbond_transport_ip = local.all_vbond_nodes[local.primary_vbond_key].transport_ip
   vbond_transport_ips        = [for key in sort(keys(local.all_vbond_nodes)) : local.all_vbond_nodes[key].transport_ip]
+  controller_public_peer_cidrs = distinct(concat(
+    var.management_public_ips_enabled ? [for _, value in stackit_public_ip.controller_management : format("%s/32", value.ip)] : [],
+    var.transport_public_ips_enabled ? [for _, value in stackit_public_ip.controller_transport : format("%s/32", value.ip)] : [],
+  ))
 }

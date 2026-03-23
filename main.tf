@@ -89,6 +89,17 @@ resource "stackit_security_group_rule" "management_egress_udp" {
   }
 }
 
+resource "stackit_security_group_rule" "management_egress_icmp" {
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.management.security_group_id
+  direction         = "egress"
+  ether_type        = "IPv4"
+  ip_range          = "0.0.0.0/0"
+  protocol = {
+    name = "icmp"
+  }
+}
+
 resource "stackit_security_group_rule" "management_admin_ingress" {
   for_each = {
     for entry in flatten([
@@ -132,6 +143,51 @@ resource "stackit_security_group_rule" "management_ssh_ingress" {
   }
   protocol = {
     name = "tcp"
+  }
+}
+
+resource "stackit_security_group_rule" "management_public_peer_ingress_tcp" {
+  for_each = {
+    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
+  }
+
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.management.security_group_id
+  direction         = "ingress"
+  ether_type        = "IPv4"
+  ip_range          = each.value
+  protocol = {
+    name = "tcp"
+  }
+}
+
+resource "stackit_security_group_rule" "management_public_peer_ingress_udp" {
+  for_each = {
+    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
+  }
+
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.management.security_group_id
+  direction         = "ingress"
+  ether_type        = "IPv4"
+  ip_range          = each.value
+  protocol = {
+    name = "udp"
+  }
+}
+
+resource "stackit_security_group_rule" "management_public_peer_ingress_icmp" {
+  for_each = {
+    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
+  }
+
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.management.security_group_id
+  direction         = "ingress"
+  ether_type        = "IPv4"
+  ip_range          = each.value
+  protocol = {
+    name = "icmp"
   }
 }
 
@@ -261,6 +317,17 @@ resource "stackit_security_group_rule" "transport_egress_udp" {
   }
 }
 
+resource "stackit_security_group_rule" "transport_egress_icmp" {
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.transport.security_group_id
+  direction         = "egress"
+  ether_type        = "IPv4"
+  ip_range          = "0.0.0.0/0"
+  protocol = {
+    name = "icmp"
+  }
+}
+
 resource "stackit_security_group_rule" "transport_admin_ingress" {
   for_each = {
     for entry in flatten([
@@ -307,6 +374,81 @@ resource "stackit_security_group_rule" "transport_ssh_ingress" {
   }
 }
 
+resource "stackit_security_group_rule" "transport_public_peer_ingress_tcp" {
+  for_each = {
+    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
+  }
+
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.transport.security_group_id
+  direction         = "ingress"
+  ether_type        = "IPv4"
+  ip_range          = each.value
+  protocol = {
+    name = "tcp"
+  }
+}
+
+resource "stackit_security_group_rule" "transport_public_peer_ingress_udp" {
+  for_each = {
+    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
+  }
+
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.transport.security_group_id
+  direction         = "ingress"
+  ether_type        = "IPv4"
+  ip_range          = each.value
+  protocol = {
+    name = "udp"
+  }
+}
+
+resource "stackit_security_group_rule" "transport_public_peer_ingress_icmp" {
+  for_each = {
+    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
+  }
+
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.transport.security_group_id
+  direction         = "ingress"
+  ether_type        = "IPv4"
+  ip_range          = each.value
+  protocol = {
+    name = "icmp"
+  }
+}
+
+resource "stackit_security_group_rule" "transport_sdwan_control_ingress_tcp" {
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.transport.security_group_id
+  direction         = "ingress"
+  ether_type        = "IPv4"
+  ip_range          = "0.0.0.0/0"
+  port_range = {
+    min = var.vbond_port
+    max = var.vbond_port
+  }
+  protocol = {
+    name = "tcp"
+  }
+}
+
+resource "stackit_security_group_rule" "transport_sdwan_control_ingress_udp" {
+  project_id        = var.project_id
+  security_group_id = stackit_security_group.transport.security_group_id
+  direction         = "ingress"
+  ether_type        = "IPv4"
+  ip_range          = "0.0.0.0/0"
+  port_range = {
+    min = var.vbond_port
+    max = var.vbond_port
+  }
+  protocol = {
+    name = "udp"
+  }
+}
+
 resource "stackit_network_interface" "controller_mgmt" {
   for_each = local.controller_nodes
 
@@ -319,6 +461,7 @@ resource "stackit_network_interface" "controller_mgmt" {
 
   depends_on = [
     stackit_security_group_rule.management_admin_ingress,
+    stackit_security_group_rule.management_egress_icmp,
     stackit_security_group_rule.management_egress_tcp,
     stackit_security_group_rule.management_egress_udp,
     stackit_security_group_rule.management_ingress_internal_tcp,
@@ -340,10 +483,13 @@ resource "stackit_network_interface" "controller_transport" {
 
   depends_on = [
     stackit_security_group_rule.transport_admin_ingress,
+    stackit_security_group_rule.transport_egress_icmp,
     stackit_security_group_rule.transport_egress_tcp,
     stackit_security_group_rule.transport_egress_udp,
     stackit_security_group_rule.transport_ingress_internal_tcp,
     stackit_security_group_rule.transport_ingress_internal_udp,
+    stackit_security_group_rule.transport_sdwan_control_ingress_tcp,
+    stackit_security_group_rule.transport_sdwan_control_ingress_udp,
     stackit_security_group_rule.transport_ssh_ingress,
   ]
 
