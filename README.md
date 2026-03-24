@@ -24,9 +24,25 @@ By default, controller certificates use `cisco_pki`. That means the built-in Cis
 ## Before You Start
 
 - Upload the controller images to STACKIT first and capture the image IDs.
+- Download the controller qcow2 images first from [software.cisco.com](https://software.cisco.com/download/home/) under `SDWAN`:
+  - `vManage Software`
+  - `vSmart Software`
+  - `vEdge Cloud`, then use the `vBond Software` image from that section
 - Make sure the Cisco Smart Account organization and Plug and Play controller profile already exist on [software.cisco.com](https://software.cisco.com/).
 - Set `organization_name` to the exact organization name used on the Cisco portal.
 - Set `vbond_hostname` to the vBond FQDN used in the Cisco controller profile. The default is `vbond.vbond`.
+
+If you want a repo helper for the image-upload stage, use:
+
+```sh
+python3 ./scripts/stackit_upload_image.py \
+  --vmanage-path /absolute/path/to/vmanage.qcow2 \
+  --vsmart-path /absolute/path/to/vsmart.qcow2 \
+  --vbond-path /absolute/path/to/vbond.qcow2
+```
+
+The helper wraps `stackit image create` and prints the resulting `image_ids = { ... }` block in the format expected by `terraform.tfvars`.
+Use the qcow2 files downloaded from `software.cisco.com > SDWAN > vManage Software / vSmart Software / vEdge Cloud > vBond Software`.
 
 `vbond_hostname` is not just a label. It must:
 
@@ -148,6 +164,7 @@ By default, the Python scripts assume the Terraform module directory is the repo
 
 - `scripts/stackit_disk_format.py`
 - `scripts/stackit_cluster_certificate.py`
+- `scripts/stackit_upload_image.py`
 - `scripts/add_controllers_to_vmanage.py`
 - `scripts/post_deploy_controllers.py`
 

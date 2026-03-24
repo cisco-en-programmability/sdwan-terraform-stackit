@@ -13,11 +13,13 @@ This repository provisions a fixed Cisco SD-WAN controller lab on STACKIT:
 - `cloud-init/vmanage.xml.tftpl`, `cloud-init/vbond.xml.tftpl`, `cloud-init/vsmart.xml.tftpl`: active working day-0 XML payloads used by the current Terraform flow.
 - `scripts/stackit_disk_format.py`: published `/dev/vdb` first-boot handling with strict `/opt/data` validation.
 - `scripts/stackit_cluster_certificate.py`: published post-deploy wrapper for 3-node vManage cluster formation followed by controller certificate enrollment.
+- `scripts/stackit_upload_image.py`: helper for uploading controller qcow2/raw images to STACKIT and printing Terraform-ready image IDs.
 - `scripts/bootstrap_vmanage_cluster.py`, `scripts/cert_api_script.py`: lower-level implementation scripts used by the wrapper and still useful for debugging.
 - `scripts/teardown_stackit_lab.sh`: preferred destroy helper when plain `terraform destroy` gets stuck.
 
 ## Operator Expectations
 
+- The controller qcow2 images should be downloaded from `software.cisco.com > SDWAN > vManage Software / vSmart Software / vEdge Cloud > vBond Software` before using the STACKIT image upload helper.
 - `organization_name` must match the value used on `software.cisco.com`.
 - `vbond_hostname` must be a DNS-resolvable vBond FQDN. It must match the value configured in `software.cisco.com > Network Plug and Play > Controller Profiles`.
 - `admin_access_cidrs` should contain only external operator/admin source ranges. Controller-to-controller reachability is added automatically by Terraform.
