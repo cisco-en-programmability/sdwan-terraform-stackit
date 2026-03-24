@@ -147,9 +147,7 @@ resource "stackit_security_group_rule" "management_ssh_ingress" {
 }
 
 resource "stackit_security_group_rule" "management_public_peer_ingress_tcp" {
-  for_each = {
-    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
-  }
+  for_each = local.controller_public_peer_cidrs_by_name
 
   project_id        = var.project_id
   security_group_id = stackit_security_group.management.security_group_id
@@ -162,9 +160,7 @@ resource "stackit_security_group_rule" "management_public_peer_ingress_tcp" {
 }
 
 resource "stackit_security_group_rule" "management_public_peer_ingress_udp" {
-  for_each = {
-    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
-  }
+  for_each = local.controller_public_peer_cidrs_by_name
 
   project_id        = var.project_id
   security_group_id = stackit_security_group.management.security_group_id
@@ -177,9 +173,7 @@ resource "stackit_security_group_rule" "management_public_peer_ingress_udp" {
 }
 
 resource "stackit_security_group_rule" "management_public_peer_ingress_icmp" {
-  for_each = {
-    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
-  }
+  for_each = local.controller_public_peer_cidrs_by_name
 
   project_id        = var.project_id
   security_group_id = stackit_security_group.management.security_group_id
@@ -375,9 +369,7 @@ resource "stackit_security_group_rule" "transport_ssh_ingress" {
 }
 
 resource "stackit_security_group_rule" "transport_public_peer_ingress_tcp" {
-  for_each = {
-    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
-  }
+  for_each = local.controller_public_peer_cidrs_by_name
 
   project_id        = var.project_id
   security_group_id = stackit_security_group.transport.security_group_id
@@ -390,9 +382,7 @@ resource "stackit_security_group_rule" "transport_public_peer_ingress_tcp" {
 }
 
 resource "stackit_security_group_rule" "transport_public_peer_ingress_udp" {
-  for_each = {
-    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
-  }
+  for_each = local.controller_public_peer_cidrs_by_name
 
   project_id        = var.project_id
   security_group_id = stackit_security_group.transport.security_group_id
@@ -405,9 +395,7 @@ resource "stackit_security_group_rule" "transport_public_peer_ingress_udp" {
 }
 
 resource "stackit_security_group_rule" "transport_public_peer_ingress_icmp" {
-  for_each = {
-    for cidr in local.controller_public_peer_cidrs : replace(cidr, "/", "_") => cidr
-  }
+  for_each = local.controller_public_peer_cidrs_by_name
 
   project_id        = var.project_id
   security_group_id = stackit_security_group.transport.security_group_id

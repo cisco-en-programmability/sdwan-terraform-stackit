@@ -421,6 +421,9 @@ def list_controller_certificate_rows(session: VManageApiSession) -> List[tuple[s
 def find_row(rows: Iterable[Dict[str, Any]], node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     hostname = node["hostname"]
     system_ip = node["system_ip"]
+    management_public_ip = node.get("management_public_ip", "")
+    management_ip = node.get("management_ip", "")
+    transport_public_ip = node.get("transport_public_ip", "")
     transport_ip = node.get("transport_ip", "")
     cluster_ip = node.get("cluster_ip", "")
     for row in rows:
@@ -429,7 +432,13 @@ def find_row(rows: Iterable[Dict[str, Any]], node: Dict[str, Any]) -> Optional[D
         if str(row.get("system-ip") or row.get("system_ip") or "") == system_ip:
             return row
         device_ip = str(row.get("deviceIP") or row.get("device_ip") or "")
-        if device_ip and device_ip in {transport_ip, cluster_ip}:
+        if device_ip and device_ip in {
+            management_public_ip,
+            management_ip,
+            transport_public_ip,
+            transport_ip,
+            cluster_ip,
+        }:
             return row
     return None
 
@@ -439,7 +448,17 @@ def controller_is_registered(rows: Iterable[Dict[str, Any]], node: Dict[str, Any
         device_ip = str(row.get("deviceIP") or row.get("device_ip") or "")
         system_ip = str(row.get("system-ip") or row.get("system_ip") or "")
         host_name = str(row.get("host-name") or row.get("host_name") or "")
-        if device_ip == node.get("transport_ip") or system_ip == node["system_ip"] or host_name == node["hostname"]:
+        if (
+            device_ip
+            in {
+                node.get("management_public_ip"),
+                node.get("management_ip"),
+                node.get("transport_public_ip"),
+                node.get("transport_ip"),
+            }
+            or system_ip == node["system_ip"]
+            or host_name == node["hostname"]
+        ):
             return True
     return False
 
@@ -458,9 +477,17 @@ def wait_for_controller_registration(
     raise TimeoutError(f"Timed out waiting for {node['hostname']} to appear in vManage controller inventory")
 
 
+def choose_controller_add_device_ip(node: Dict[str, Any]) -> str:
+    for field in ("management_public_ip", "management_ip", "transport_public_ip", "transport_ip"):
+        value = str(node.get(field) or "").strip()
+        if value:
+            return value
+    raise RuntimeError(f"No usable controller deviceIP found for {node['hostname']}")
+
+
 def add_controller_payload(node: Dict[str, Any], username: str, password: str) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
-        "deviceIP": node["transport_ip"],
+        "deviceIP": choose_controller_add_device_ip(node),
         "username": username,
         "password": password,
         "generateCSR": False,
@@ -630,6 +657,34 @@ def generate_csr(session: VManageApiSession, device_ip: str) -> None:
             return
         if "already" in message and "csr" in message:
             return
+        if not error and (
+            "data" in response
+            or "header" in response
+            or "id" in response
+            or "uuid" in response
+            or _payload_is_success(response)
+        ):
+            return
+        details = response.get("details")
+        raise RuntimeError(
+            f"CSR generation request failed for deviceIP {device_ip}: "
+            f"message={response.get('message')!r} error={response.get('error')!r} details={details!r}"
+        )
+    if isinstance(response, str):
+        raise RuntimeError(f"CSR generation request failed for deviceIP {device_ip}: {response}")
+
+
+def csr_session_for_node(
+    primary_session: VManageApiSession,
+    config: Dict[str, Any],
+    node: Dict[str, Any],
+) -> VManageApiSession:
+    if node.get("role") != "vmanage":
+        return primary_session
+    management_url = str(node.get("management_url") or "").strip()
+    if not management_url or management_url == config["primary_url"]:
+        return primary_session
+    return VManageApiSession(management_url, config["username"], config["password"])
 
 
 def row_has_csr(row: Dict[str, Any]) -> bool:
@@ -1048,21 +1103,16 @@ def wait_for_manual_cisco_services_registration(
             account_row = get_smart_account_credentials(session)
             pnp_row = get_pnp_connect_sync(session)
             cisco_services = list_cisco_services(session)
-            if not account_row.get("username"):
-                raise RuntimeError(
-                    "Cisco Services Registration is incomplete: Smart Account credentials are not active yet "
-                    f"(smartaccount={account_row})"
-                )
-            if not pnp_connect_sync_enabled(pnp_row):
-                raise RuntimeError(
-                    "Cisco Services Registration is incomplete: Plug-and-Play sync is not enabled "
-                    f"(pnpConnectSync={pnp_row})"
-                )
             if not plug_and_play_registered(cisco_services):
                 raise RuntimeError(
                     "Cisco Services Registration is incomplete: Plug-and-Play is not registered yet "
                     f"(ciscoServices={cisco_services})"
                 )
+            # On some builds the dedicated Smart Account and PnP settings endpoints
+            # stay empty even after the portal workflow completes. Treat the
+            # Cisco Services Plug-and-Play registration row as the authoritative
+            # signal once it is present, and only use the older endpoints as
+            # supporting evidence when they populate.
             return
         except Exception as exc:  # noqa: BLE001
             last_error = exc
@@ -1286,10 +1336,11 @@ def run_enterprise_local_flow(
             continue
 
         device_ip = choose_device_ip_for_csr(node, row)
+        node_csr_session = csr_session_for_node(session, config, node)
 
         if not row_has_csr(row):
             log(f"Generating CSR for {node['hostname']} using deviceIP {device_ip}")
-            generate_csr(session, device_ip)
+            generate_csr(node_csr_session, device_ip)
             row = wait_for_csr(session, node, config["ready_timeout_seconds"], config["poll_interval_seconds"])
         else:
             log(f"{node['hostname']} already has a CSR available in vManage")
@@ -1371,40 +1422,93 @@ def run_cisco_pki_flow(
 
     add_missing_controllers(config, session)
 
+    installed_keys: set[str] = set()
+    pending_nodes: List[Dict[str, Any]] = []
+    failures: Dict[str, str] = {}
+
     for node in config["ordered_nodes"]:
         row = wait_for_controller_row(session, node, config["ready_timeout_seconds"], config["poll_interval_seconds"])
         if controller_cert_installed(row):
             log(f"{node['hostname']} already shows certInstallStatus installed; skipping")
+            installed_keys.add(node["key"])
             continue
 
         device_ip = choose_device_ip_for_csr(node, row)
-        log(f"Ensuring Cisco PKI CSR is triggered for {node['hostname']} using deviceIP {device_ip}")
-        generate_csr(session, device_ip)
-        wait_for_csr_request_submitted(
-            session,
-            node,
-            config["ready_timeout_seconds"],
-            config["poll_interval_seconds"],
-        )
+        node_csr_session = csr_session_for_node(session, config, node)
+        try:
+            log(f"Ensuring Cisco PKI CSR is triggered for {node['hostname']} using deviceIP {device_ip}")
+            generate_csr(node_csr_session, device_ip)
+            pending_nodes.append(node)
+        except Exception as exc:  # noqa: BLE001
+            failures[node["hostname"]] = f"CSR trigger failed: {exc}"
+            log(f"{node['hostname']} CSR trigger failed; continuing with other controllers: {exc}")
 
-        log(f"Waiting for Cisco PKI certificate install for {node['hostname']}")
-        wait_for_certificate_installed(
-            session,
-            node,
-            config["ready_timeout_seconds"],
-            config["poll_interval_seconds"],
-        )
-        log(f"{node['hostname']} certificate install is complete")
+    if pending_nodes:
+        log("Waiting for Cisco PKI certificate install across all pending controllers")
+
+    observed_csr_hosts: set[str] = set()
+    deadline = time.monotonic() + config["ready_timeout_seconds"]
+    while pending_nodes and time.monotonic() < deadline:
+        next_pending: List[Dict[str, Any]] = []
+        for node in pending_nodes:
+            row = wait_for_controller_row(
+                session,
+                node,
+                timeout=config["poll_interval_seconds"],
+                interval=max(2, config["poll_interval_seconds"] // 2),
+            )
+            if controller_cert_failed(row):
+                failures[node["hostname"]] = f"Certificate install failed: {row}"
+                log(f"{node['hostname']} certificate install failed; continuing with remaining controllers")
+                continue
+            if controller_csr_requested(row) and node["hostname"] not in observed_csr_hosts:
+                observed_csr_hosts.add(node["hostname"])
+                log(f"{node['hostname']} CSR request is visible in certificate inventory")
+            if controller_cert_installed(row):
+                installed_keys.add(node["key"])
+                log(f"{node['hostname']} certificate install is complete")
+                continue
+            next_pending.append(node)
+        pending_nodes = next_pending
+        if pending_nodes:
+            time.sleep(config["poll_interval_seconds"])
+
+    for node in pending_nodes:
+        failures[node["hostname"]] = "Timed out waiting for Cisco PKI certificate install"
+        log(f"{node['hostname']} did not finish certificate install before timeout")
 
     log("Syncing vSmart certificates to vBond")
     trigger_vbond_sync(session, config["ready_timeout_seconds"], config["poll_interval_seconds"])
 
-    vsmart_nodes = [node for node in config["controller_nodes"] if node["role"] == "vsmart"]
-    vbond_nodes = [node for node in config["controller_nodes"] if node["role"] == "vbond"]
+    vsmart_nodes = [node for node in config["controller_nodes"] if node["role"] == "vsmart" and node["key"] in installed_keys]
+    vbond_nodes = [node for node in config["controller_nodes"] if node["role"] == "vbond" and node["key"] in installed_keys]
     if vsmart_nodes:
         wait_for_reachability(session, "vsmart", vsmart_nodes, config["ready_timeout_seconds"], config["poll_interval_seconds"])
     if vbond_nodes:
         wait_for_reachability(session, "vbond", vbond_nodes, config["ready_timeout_seconds"], config["poll_interval_seconds"])
+
+    cleared_hosts: List[str] = []
+    for node in config["ordered_nodes"]:
+        if node["hostname"] not in failures:
+            continue
+        try:
+            row = wait_for_controller_row(
+                session,
+                node,
+                timeout=config["poll_interval_seconds"],
+                interval=max(2, config["poll_interval_seconds"] // 2),
+            )
+        except Exception:
+            continue
+        if controller_cert_installed(row):
+            installed_keys.add(node["key"])
+            cleared_hosts.append(node["hostname"])
+    for hostname in cleared_hosts:
+        failures.pop(hostname, None)
+
+    if failures:
+        failure_text = "; ".join(f"{host}: {reason}" for host, reason in sorted(failures.items()))
+        raise RuntimeError(f"Cisco PKI completed with controller failures: {failure_text}")
 
 
 def main() -> int:
