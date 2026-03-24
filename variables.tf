@@ -22,7 +22,7 @@ variable "prefix" {
 }
 
 variable "organization_name" {
-  description = "Cisco SD-WAN organization name."
+  description = "Cisco SD-WAN organization name. This must match the organization name used in software.cisco.com and in the Cisco Smart Account / Plug and Play controller profile."
   type        = string
 }
 
@@ -39,7 +39,7 @@ variable "vbond_port" {
 }
 
 variable "vbond_hostname" {
-  description = "Hostname used by controllers to resolve the vBond transport endpoints."
+  description = "DNS-resolvable vBond FQDN used by controllers to resolve the vBond transport endpoints. This must match the vBond hostname configured in software.cisco.com > Network Plug and Play > Controller Profiles."
   type        = string
   default     = "vbond.vbond"
 }
@@ -235,7 +235,7 @@ variable "vsmart_server_csr_path" {
 }
 
 variable "admin_access_cidrs" {
-  description = "CIDRs allowed to reach the management and transport public IPs for SSH and HTTPS."
+  description = "External source CIDRs allowed to reach the controller management and transport public IPs for SSH and HTTPS. Controller-to-controller access is added automatically by Terraform."
   type        = list(string)
   default     = []
 
@@ -269,7 +269,7 @@ variable "transport_public_ips_enabled" {
 }
 
 variable "run_vmanage_firstboot_init" {
-  description = "Whether Terraform should run scripts/init_vmanage_firstboot.sh against vManage after the VM starts. Leave false for manual bring-up."
+  description = "Whether Terraform should run scripts/init_vmanage_firstboot.sh against vManage after the VM starts. Leave this false by default so you can verify the Terraform deployment first and run the helper independently."
   type        = bool
   default     = false
 }

@@ -3,6 +3,13 @@
 
 This stage only passes when each selected vManage node confirms that
 /opt/data is mounted as a separate filesystem after any first-boot reboot.
+
+Notes:
+- The script reads `controller_inventory` from Terraform outputs and targets
+  only `vManage` nodes.
+- Use `--module-dir` if the Terraform module is in a different checkout.
+- This script is safe to rerun; it treats `/opt/data` as the success signal.
+- This is the published disk-format entry point used after Terraform bring-up.
 """
 
 from __future__ import annotations

@@ -26,6 +26,13 @@ The config file is a JSON document with at least:
     }
   ]
 }
+
+Notes:
+- The common local workflow does not require a hand-written JSON file. The
+  script reads `controller_inventory` from Terraform outputs by default.
+- Use `--module-dir` when the Terraform module lives in a different checkout.
+- The script is intentionally rerunnable and only adds missing secondary
+  managers after the primary is prepared.
 """
 
 import argparse

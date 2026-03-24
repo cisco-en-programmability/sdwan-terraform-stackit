@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Generate example local vManage certificate artifacts for testing or for the
+# older enterprise-local workflow.
+#
+# Notes:
+# - This helper is not part of the default Cisco PKI bring-up path.
+# - It is meant for local certificate experiments and example material only.
+
 usage() {
   cat <<'EOF'
 Usage:

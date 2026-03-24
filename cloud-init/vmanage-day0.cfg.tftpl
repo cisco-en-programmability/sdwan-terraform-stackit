@@ -1,8 +1,13 @@
+! Variation: reference CLI day-0 template. Not used by the current Terraform
+! flow, which renders XML day-0 through cloud-init wrappers.
 system
  host-name ${hostname}
  system-ip ${system_ip}
  site-id ${site_id}
  organization-name "${organization_name}"
+ ! vbond_hostname must be a DNS-resolvable vBond FQDN. It must match the value
+ ! used in software.cisco.com > Network Plug and Play > Controller Profiles and
+ ! must align with organization_name.
  vbond ${vbond_hostname}
  clock timezone UTC
 !

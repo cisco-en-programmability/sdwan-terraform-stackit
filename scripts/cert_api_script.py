@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""Install controller certificates through vManage APIs after cluster formation."""
+"""Install controller certificates through vManage APIs after cluster formation.
+
+Notes:
+- `cisco_pki` is the default mode and expects Cisco Services Registration to be
+  completed in the vManage portal with an organization that matches
+  `organization_name`.
+- The script reads Terraform outputs from the module directory to discover
+  controller addresses, certificate ordering, and vManage endpoints.
+- Use `--module-dir` if you are running from a copied checkout instead of the
+  original repository root.
+- The Cisco PKI flow is best-effort per controller so one failing manager does
+  not prevent vBond and vSmart enrollment from completing.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,6 @@
 #cloud-config
+# Active working wrapper template for vManage. Current Terraform uses this file
+# for day-0 delivery and only injects a root CA when enterprise_local is chosen.
 hostname: ${hostname}
 ssh_pwauth: true
 chpasswd:

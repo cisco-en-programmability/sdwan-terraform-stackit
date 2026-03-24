@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Run the published post-deploy controller workflow after disk formatting.
+
+This wrapper keeps the operator flow simple:
+1. run Terraform
+2. run `stackit_disk_format.py`
+3. run this script
+
+The wrapper first performs 3-node vManage cluster formation and then runs the
+controller certificate workflow. It intentionally delegates to the underlying
+implementation scripts so the lower-level tools remain available for debugging.
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+from typing import List
+
+
+SCRIPTS_DIR = Path(__file__).resolve().parent
+CLUSTER_SCRIPT = SCRIPTS_DIR / "bootstrap_vmanage_cluster.py"
+CERT_SCRIPT = SCRIPTS_DIR / "cert_api_script.py"
+
+
+def run_step(cmd: List[str], label: str) -> int:
+    print(f"==> {label}", flush=True)
+    completed = subprocess.run(cmd, text=True)
+    if completed.returncode != 0:
+        print(f"{label} failed with exit code {completed.returncode}", file=sys.stderr, flush=True)
+    return completed.returncode
+
+
+def append_optional_arg(cmd: List[str], flag: str, value: str | None) -> None:
+    if value is None:
+        return
+    cmd.extend([flag, value])
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Run vManage cluster formation followed by controller certificate enrollment."
+    )
+    parser.add_argument("--module-dir", default="", help="Terraform module directory. Defaults to the repo root.")
+    parser.add_argument("--username", default="admin", help="vManage username. Defaults to admin.")
+    parser.add_argument("--password", default=None, help="Controller password. Defaults to admin_password from terraform.tfvars.")
+    parser.add_argument("--yes", action="store_true", help="Skip the cluster confirmation prompt.")
+    parser.add_argument("--controllers", default=None, help="Optional subset for certificate enrollment, such as vbond01,vbond02.")
+    parser.add_argument(
+        "--controller-certificate-method",
+        choices=("cisco_pki", "enterprise_local"),
+        default=None,
+        help="Certificate flow override. Defaults to controller_certificate_method from terraform.tfvars.",
+    )
+    parser.add_argument("--artifacts-dir", default=None, help="Artifact directory for downloaded CSRs and signed certs.")
+    parser.add_argument("--ca-cert", default=None, help="Controller root CA certificate path for enterprise_local.")
+    parser.add_argument("--ca-key", default=None, help="Controller root CA private key path for enterprise_local.")
+    parser.add_argument(
+        "--smart-account-preconfigured",
+        action="store_true",
+        help="Skip the manual Cisco Services Registration prompt and assume it is already configured on vManage.",
+    )
+    parser.add_argument("--poll-interval-seconds", type=int, default=10, help="Polling interval used by both workflow stages.")
+    parser.add_argument("--server-ready-timeout-seconds", type=int, default=7200, help="Timeout for vManage HTTPS and server-ready checks.")
+    parser.add_argument("--cluster-ready-timeout-seconds", type=int, default=10800, help="Timeout for cluster convergence.")
+    parser.add_argument("--ready-timeout-seconds", type=int, default=2400, help="Timeout for certificate registration and enrollment waits.")
+    args = parser.parse_args()
+
+    module_dir = args.module_dir or str(Path(__file__).resolve().parents[1])
+
+    cluster_cmd = [
+        sys.executable,
+        str(CLUSTER_SCRIPT),
+        "--module-dir",
+        module_dir,
+        "--username",
+        args.username,
+        "--poll-interval-seconds",
+        str(args.poll_interval_seconds),
+        "--server-ready-timeout-seconds",
+        str(args.server_ready_timeout_seconds),
+        "--cluster-ready-timeout-seconds",
+        str(args.cluster_ready_timeout_seconds),
+    ]
+    append_optional_arg(cluster_cmd, "--password", args.password)
+    if args.yes:
+        cluster_cmd.append("--yes")
+
+    if run_step(cluster_cmd, "vManage cluster formation") != 0:
+        return 1
+
+    cert_cmd = [
+        sys.executable,
+        str(CERT_SCRIPT),
+        "--module-dir",
+        module_dir,
+        "--username",
+        args.username,
+        "--poll-interval-seconds",
+        str(args.poll_interval_seconds),
+        "--ready-timeout-seconds",
+        str(args.ready_timeout_seconds),
+    ]
+    append_optional_arg(cert_cmd, "--password", args.password)
+    append_optional_arg(cert_cmd, "--controllers", args.controllers)
+    append_optional_arg(cert_cmd, "--controller-certificate-method", args.controller_certificate_method)
+    append_optional_arg(cert_cmd, "--artifacts-dir", args.artifacts_dir)
+    append_optional_arg(cert_cmd, "--ca-cert", args.ca_cert)
+    append_optional_arg(cert_cmd, "--ca-key", args.ca_key)
+    if args.smart_account_preconfigured:
+        cert_cmd.append("--smart-account-preconfigured")
+
+    return run_step(cert_cmd, "controller certificate enrollment")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

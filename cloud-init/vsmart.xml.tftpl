@@ -1,3 +1,4 @@
+<!-- Active working vSmart day-0 XML template used by the current Terraform flow. -->
 <config xmlns="http://tail-f.com/ns/config/1.0">
   <system xmlns="http://viptela.com/system">
     <personality>vsmart</personality>
@@ -6,6 +7,9 @@
     <site-id>${site_id}</site-id>
     <domain-id>${domain_id}</domain-id>
     <organization-name>${organization_name}</organization-name>
+    <!-- vbond_hostname must be a DNS-resolvable vBond FQDN. It must match the
+         value configured in software.cisco.com > Network Plug and Play >
+         Controller Profiles and must align with organization-name. -->
     <vbond>
       <remote>${vbond_hostname}</remote>
       <port>${vbond_port}</port>
@@ -29,6 +33,8 @@
   <vpn xmlns="http://viptela.com/vpn">
     <vpn-instance>
       <vpn-id>0</vpn-id>
+      <!-- Keep the vBond FQDN plus both transport IPs in vpn 0 so the
+           controller can resolve and reach both validators from first boot. -->
       <host>
         <hostname>${vbond_hostname}</hostname>
 %{ for ip in vbond_ips ~}

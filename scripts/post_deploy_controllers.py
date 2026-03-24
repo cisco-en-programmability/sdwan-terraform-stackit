@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""Legacy direct-device controller certificate bootstrap helper.
+
+Notes:
+- This script is kept as a fallback and reference path.
+- The active published workflow uses `stackit_cluster_certificate.py` instead.
+- It still reads Terraform outputs from the module directory and supports
+  `--module-dir` for copied checkouts.
+"""
+
 from __future__ import annotations
 
 import argparse

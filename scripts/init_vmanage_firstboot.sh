@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Handle the interactive vManage `/dev/vdb` first-boot prompt on a single node.
+#
+# Notes:
+# - `run_vmanage_firstboot_init` is intentionally false by default in Terraform.
+# - The normal operator workflow is to verify `terraform apply` first, then run
+#   this helper explicitly or through `stackit_disk_format.py`.
+# - Success is based on the data-mount outcome, not on early HTTPS alone.
+
 host="${1:?usage: init_vmanage_firstboot.sh <host> <password> [user] [preferred_devices_csv] [https_host]}"
 password="${2:?usage: init_vmanage_firstboot.sh <host> <password> [user] [preferred_devices_csv] [https_host]}"
 user="${3:-admin}"

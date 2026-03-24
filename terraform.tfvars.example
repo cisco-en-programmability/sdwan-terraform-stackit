@@ -2,7 +2,12 @@ project_id         = "00000000-0000-0000-0000-000000000000"
 region             = "eu01"
 availability_zone  = "eu01-1"
 prefix             = "stackittestuser"
+# This must match the organization name configured on software.cisco.com for
+# the Cisco Smart Account / Plug and Play controller profile used by this lab.
 organization_name  = "STACKITTESTUSER_SDWAN"
+# This must be the DNS-resolvable vBond FQDN used by your controllers. It must
+# match the vBond hostname configured in software.cisco.com > Network Plug and
+# Play > Controller Profiles.
 vbond_hostname     = "vbond.vbond"
 
 custom_labels = {
@@ -34,9 +39,9 @@ controller_certificate_method     = "cisco_pki"
 
 # cisco_pki is the default controller certificate flow.
 # It uses the default Cisco trust bundle in the image, does not inject a root CA
-# through cloud-init, and will later prompt for Cisco Smart Account credentials
-# during ./scripts/cert_api_script.py. The Smart Account organization must match
-# organization_name above.
+# through cloud-init, and will later prompt for Cisco Smart Account registration
+# during ./scripts/stackit_cluster_certificate.py. The Smart Account organization must match
+# organization_name above exactly as it appears on software.cisco.com.
 
 vmanage_cert_mode                  = "disabled"
 vmanage_generated_cert_dir         = "certs/vmanage/generated"
@@ -62,6 +67,9 @@ vsmart_server_key_path   = "certs/vsmart/generated/server.key"
 vsmart_server_csr_path   = "certs/vsmart/generated/server.csr"
 
 admin_access_cidrs = [
+  # Add the external source IPs or CIDRs that should be allowed to reach the
+  # controller public IPs. Terraform automatically adds controller-to-controller
+  # reachability separately, so only operator/admin source ranges belong here.
   "171.70.59.0/24",
   "128.107.0.0/16",
   "128.107.241.160/27",
@@ -88,6 +96,8 @@ ssh_access_cidrs = [
 
 management_public_ips_enabled = true
 transport_public_ips_enabled  = true
+# Keep this false by default so you can verify terraform apply completed
+# successfully and then run the first-boot disk formatting helper separately.
 run_vmanage_firstboot_init    = false
 network_ipv4_nameservers      = ["1.1.1.1", "8.8.8.8"]
 vmanage_site_ids              = [110, 111, 112]

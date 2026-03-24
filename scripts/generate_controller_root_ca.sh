@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Generate or reuse the shared controller root CA for the enterprise-local
+# fallback certificate flow.
+#
+# Notes:
+# - This helper is not used by the default Cisco PKI flow.
+# - It writes only local artifacts under the requested output directory.
+# - Re-running with the same manifest is intentionally idempotent.
+
 usage() {
   cat <<'EOF'
 Usage:

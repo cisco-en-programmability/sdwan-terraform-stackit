@@ -4,7 +4,7 @@
 This script is intended to run manually after:
 1. `terraform apply`
 2. `post_deploy_controllers.py`
-3. `bootstrap_vmanage_cluster.py`
+3. `stackit_cluster_certificate.py` or `bootstrap_vmanage_cluster.py`
 
 Flow follows the adab controller bring-up workflow:
 - add vSmarts first with `generateCSR=false`

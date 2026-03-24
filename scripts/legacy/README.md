@@ -14,6 +14,5 @@ That legacy sequence was:
 
 The active documented flow now uses:
 
-1. `python3 ./scripts/format_vmanage_data_disks.py`
-2. `python3 ./scripts/bootstrap_vmanage_cluster.py`
-3. `python3 ./scripts/cert_api_script.py`
+1. `python3 ./scripts/stackit_disk_format.py`
+2. `python3 ./scripts/stackit_cluster_certificate.py`

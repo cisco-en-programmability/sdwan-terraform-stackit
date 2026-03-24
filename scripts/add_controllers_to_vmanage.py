@@ -4,7 +4,7 @@
 This script is intended to run manually after:
 1. `terraform apply`
 2. `post_deploy_controllers.py`
-3. `bootstrap_vmanage_cluster.py`
+3. `stackit_cluster_certificate.py` or `bootstrap_vmanage_cluster.py`
 
 Flow follows the adab controller bring-up workflow:
 - add vSmarts first with `generateCSR=false`
@@ -12,6 +12,13 @@ Flow follows the adab controller bring-up workflow:
 - sync certificates to vBonds via `/dataservice/certificate/vsmart/list`
 - wait until vManage reports the targeted controllers as reachable with expected
   control connections up
+
+Notes:
+- This is now mostly a legacy helper. The active published flow uses
+  `stackit_cluster_certificate.py` for cluster formation + controller add +
+  certificate enrollment together.
+- The script reads `controller_inventory` from Terraform outputs in the module
+  directory. Use `--module-dir` if the repo was copied elsewhere.
 """
 
 from __future__ import annotations

@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Preferred teardown helper for this repository.
+#
+# Notes:
+# - Uses the local repo checkout to find Terraform state and tfvars.
+# - Retries `terraform destroy` and performs targeted vManage volume-detach
+#   cleanup when the provider gets stuck on data disks.
+# - Run this helper from the checkout you want to destroy.
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TF="${TF_BIN:-terraform}"
 STACKIT="${STACKIT_BIN:-stackit}"
