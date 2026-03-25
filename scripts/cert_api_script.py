@@ -413,6 +413,42 @@ def log_cisco_pki_prereqs(config: Dict[str, Any], organization_name: str, vbond_
         log("  " + " ".join(parts))
 
 
+def log_vbond_registration_details(config: Dict[str, Any], vbond_hostname: str) -> None:
+    log("Use the following vBond details in the Cisco portal controller profile if prompted:")
+    log(f"  vBond DNS/FQDN: {vbond_hostname}")
+
+    vbond_nodes = [node for node in config["controller_nodes"] if node["role"] == "vbond"]
+    if not vbond_nodes:
+        log("  No vBond nodes were selected in this run")
+        return
+
+    for node in vbond_nodes:
+        log(f"  vBond hostname: {node['hostname']}")
+        log(f"    transport_public_ip: {node.get('transport_public_ip') or 'N/A'}")
+        log(f"    management_public_ip: {node.get('management_public_ip') or 'N/A'}")
+        log(f"    transport_ip: {node.get('transport_ip') or 'N/A'}")
+        log(f"    management_ip: {node.get('management_ip') or 'N/A'}")
+
+
+def confirm_certificate_enrollment(controller_certificate_method: str, auto_approve: bool) -> None:
+    if auto_approve:
+        return
+    log(
+        "Certificate enrollment is about to begin. Ensure the cluster is stable before proceeding."
+    )
+    if controller_certificate_method == "cisco_pki":
+        log(
+            "For Cisco PKI, vManage will submit controller CSRs and then push updated controller lists and serial lists across the cluster."
+        )
+    else:
+        log(
+            "For enterprise_local, vManage will install locally signed controller certificates and then push updated controller lists and serial lists across the cluster."
+        )
+    confirmation = input("Type yes to continue with controller certificate enrollment: ").strip().lower()
+    if confirmation != "yes":
+        raise RuntimeError("Controller certificate enrollment was not confirmed. Aborting before CSR generation.")
+
+
 def list_registered_controllers(session: VManageApiSession) -> List[Dict[str, Any]]:
     return extract_data_list(session.request("GET", "/dataservice/system/device/controllers"))
 
@@ -1023,12 +1059,13 @@ def get_enterprise_root_ca(session: VManageApiSession) -> str:
     return str(rows[0].get("enterpriseRootCA") or "").strip()
 
 
-def prompt_manual_cisco_services_registration(config: Dict[str, Any], organization_name: str) -> None:
+def prompt_manual_cisco_services_registration(config: Dict[str, Any], organization_name: str, vbond_hostname: str) -> None:
     log("Manual Cisco Services Registration is required before Cisco PKI certificate enrollment can continue.")
     log(f"Open vManage portal: {config['primary_url']}")
     log(f"Login username: {config['username']}")
     log(f"Login password: {config['password']}")
     log(f"Organization name must match: {organization_name}")
+    log_vbond_registration_details(config, vbond_hostname)
     log("In the vManage portal, go to: Settings > Cisco Services Registration")
     log("Select Plug-and-Play, choose Register Services, complete the activation-code flow, enter the Smart Account username and password, and enable it for Plug-and-Play.")
     confirmation = input("Type yes after Cisco Services Registration is completed successfully in the vManage portal: ").strip().lower()
@@ -1399,6 +1436,7 @@ def run_cisco_pki_flow(
     smart_account_username: Optional[str],
     smart_account_password: Optional[str],
     organization_name: str,
+    vbond_hostname: str,
     smart_account_preconfigured: bool = False,
 ) -> None:
     log(
@@ -1424,7 +1462,7 @@ def run_cisco_pki_flow(
     if smart_account_preconfigured:
         log("Cisco Services Registration is marked as preconfigured; validating Smart Account, Plug-and-Play, and Cisco services state")
     else:
-        prompt_manual_cisco_services_registration(config, organization_name)
+        prompt_manual_cisco_services_registration(config, organization_name, vbond_hostname)
     log("Validating Cisco Services Registration state via vManage APIs")
     wait_for_manual_cisco_services_registration(
         session,
@@ -1537,6 +1575,7 @@ def main() -> int:
         help="Certificate flow override. Defaults to controller_certificate_method from terraform.tfvars, else cisco_pki.",
     )
     parser.add_argument("--controllers", default=None, help="Optional subset such as vbond01,vbond02,vsmart01,vsmart02.")
+    parser.add_argument("--yes", action="store_true", help="Skip the certificate enrollment confirmation prompt.")
     parser.add_argument("--artifacts-dir", default=str(DEFAULT_ARTIFACTS_DIR), help="Artifact directory for downloaded CSRs and signed certs.")
     parser.add_argument("--ca-cert", default=None, help="Controller root CA certificate path. Defaults to the path from terraform.tfvars.")
     parser.add_argument("--ca-key", default=None, help="Controller root CA private key path. Defaults next to the CA certificate as root-ca.key.")
@@ -1595,6 +1634,7 @@ def main() -> int:
         f"Using primary vManage {config['primary_hostname']} at {config['primary_url']} "
         f"with controller_certificate_method={controller_certificate_method}"
     )
+    confirm_certificate_enrollment(controller_certificate_method, args.yes)
     if controller_certificate_method == "cisco_pki":
         log_cisco_pki_prereqs(config, organization_name, vbond_hostname)
         run_cisco_pki_flow(
@@ -1603,6 +1643,7 @@ def main() -> int:
             None,
             None,
             organization_name,
+            vbond_hostname,
             smart_account_preconfigured=args.smart_account_preconfigured,
         )
     else:

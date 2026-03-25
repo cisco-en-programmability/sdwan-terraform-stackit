@@ -510,6 +510,26 @@ def wait_for_cluster_ready(
     raise TimeoutError(f"Timed out waiting for cluster readiness: {last_status}")
 
 
+def wait_for_cluster_member_present(
+    primary_url: str,
+    username: str,
+    password: str,
+    node: Dict[str, Any],
+    timeout: int,
+    interval: int,
+) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            entries = get_cluster_entries(primary_url, username, password)
+            if node["cluster_ip"] in entries:
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(interval)
+    return False
+
+
 def ensure_node_cluster_ip(node: Dict[str, Any], username: str, password: str, timeout: int, interval: int, services: Dict[str, Any]) -> None:
     wait_for_node_ready(node, username, password, timeout, interval)
 
@@ -599,13 +619,30 @@ def ensure_additional_members(config: Dict[str, Any], interval: int) -> None:
             "persona": node.get("persona", "COMPUTE_AND_DATA"),
             "services": services,
         }
-        log(f"Adding {node['hostname']} to cluster using cluster IP {node['cluster_ip']}")
-        try:
-            client.request("POST", "/dataservice/clusterManagement/setup", payload)
-        except Exception as exc:  # noqa: BLE001
+        attempts = 3
+        membership_timeout = max(interval * 3, min(180, int(config["cluster_ready_timeout_seconds"])))
+        last_error = "cluster add not attempted yet"
+        for attempt in range(1, attempts + 1):
+            log(f"Adding {node['hostname']} to cluster using cluster IP {node['cluster_ip']} (attempt {attempt}/{attempts})")
+            try:
+                client.request("POST", "/dataservice/clusterManagement/setup", payload)
+                last_error = "request returned cleanly"
+            except Exception as exc:  # noqa: BLE001
+                last_error = str(exc)
+                log(
+                    f"Add-node request for {node['hostname']} did not return a clean response; "
+                    f"checking cluster membership because application-server may be restarting: {exc}"
+                )
+            if wait_for_cluster_member_present(primary_url, username, password, node, membership_timeout, interval):
+                log(f"{node['hostname']} is now present in cluster membership as {node['cluster_ip']}")
+                break
+            if attempt == attempts:
+                raise RuntimeError(
+                    f"{node['hostname']} was not added to cluster after {attempts} attempts: {last_error}"
+                )
             log(
-                f"Add-node request for {node['hostname']} did not return a clean response; "
-                f"continuing with readiness polling because application-server may be restarting: {exc}"
+                f"{node['hostname']} is still missing from cluster membership after attempt {attempt}; "
+                "retrying add-node request"
             )
         if node["cluster_ip"] not in current_member_ips:
             current_member_ips.add(node["cluster_ip"])

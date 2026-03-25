@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import List
 
@@ -37,6 +38,30 @@ def append_optional_arg(cmd: List[str], flag: str, value: str | None) -> None:
     if value is None:
         return
     cmd.extend([flag, value])
+
+
+def wait_for_cluster_stabilization(seconds: int) -> None:
+    if seconds <= 0:
+        return
+    print(
+        f"==> post-cluster stabilization wait ({seconds} seconds)",
+        flush=True,
+    )
+    print(
+        "The vManage cluster is up, but certificate enrollment works better after an additional stabilization window.",
+        flush=True,
+    )
+    time.sleep(seconds)
+
+
+def confirm_certificate_stage() -> None:
+    print(
+        "Certificate enrollment will now begin. This step can trigger controller serial-list and certificate pushes across the cluster.",
+        flush=True,
+    )
+    response = input("Type 'yes' to continue with controller certificate enrollment: ").strip()
+    if response != "yes":
+        raise RuntimeError("Controller certificate enrollment cancelled by operator")
 
 
 def main() -> int:
@@ -66,6 +91,12 @@ def main() -> int:
     parser.add_argument("--server-ready-timeout-seconds", type=int, default=7200, help="Timeout for vManage HTTPS and server-ready checks.")
     parser.add_argument("--cluster-ready-timeout-seconds", type=int, default=10800, help="Timeout for cluster convergence.")
     parser.add_argument("--ready-timeout-seconds", type=int, default=2400, help="Timeout for certificate registration and enrollment waits.")
+    parser.add_argument(
+        "--post-cluster-delay-seconds",
+        type=int,
+        default=300,
+        help="Additional stabilization delay after cluster formation and before certificate enrollment. Defaults to 300 seconds.",
+    )
     args = parser.parse_args()
 
     module_dir = args.module_dir or str(Path(__file__).resolve().parents[1])
@@ -91,6 +122,9 @@ def main() -> int:
     if run_step(cluster_cmd, "vManage cluster formation") != 0:
         return 1
 
+    wait_for_cluster_stabilization(args.post_cluster_delay_seconds)
+    confirm_certificate_stage()
+
     cert_cmd = [
         sys.executable,
         str(CERT_SCRIPT),
@@ -102,6 +136,7 @@ def main() -> int:
         str(args.poll_interval_seconds),
         "--ready-timeout-seconds",
         str(args.ready_timeout_seconds),
+        "--yes",
     ]
     append_optional_arg(cert_cmd, "--password", args.password)
     append_optional_arg(cert_cmd, "--controllers", args.controllers)
