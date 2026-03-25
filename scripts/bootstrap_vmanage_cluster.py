@@ -60,6 +60,11 @@ def log(message: str) -> None:
     print(f"[{timestamp}] {message}", flush=True)
 
 
+def sleep_with_log(seconds: int, reason: str) -> None:
+    log(f"sleeping {seconds}s: {reason}")
+    time.sleep(seconds)
+
+
 class VManageError(RuntimeError):
     pass
 
@@ -277,7 +282,7 @@ def wait_for_https_listener(url: str, timeout: int, interval: int, label: str) -
             return
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
-        time.sleep(interval)
+        sleep_with_log(interval, f"retrying HTTPS listener check for {label}")
 
     raise TimeoutError(f"Timed out waiting for HTTPS listener on {label} via {url}: {last_error}")
 
@@ -359,7 +364,7 @@ def wait_for_server_ready(url: str, username: str, password: str, timeout: int, 
             last_error = f"unexpected readiness payload: {payload}"
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
-        time.sleep(interval)
+        sleep_with_log(interval, f"retrying server-ready check for {label}")
     raise TimeoutError(f"Timed out waiting for {label} to become ready via {url}: {last_error}")
 
 
@@ -428,7 +433,7 @@ def wait_for_node_cluster_ip(
             last_status = f"{node['hostname']} current cluster IP is {current_ip or 'unset'}"
         except Exception as exc:  # noqa: BLE001
             last_status = str(exc)
-        time.sleep(interval)
+        sleep_with_log(interval, f"retrying cluster-IP verification for {node['hostname']}")
     raise TimeoutError(f"Timed out waiting for {node['hostname']} cluster IP {node['cluster_ip']}: {last_status}")
 
 
@@ -506,7 +511,7 @@ def wait_for_cluster_ready(
                 return
         except Exception as exc:  # noqa: BLE001
             last_status = str(exc)
-        time.sleep(interval)
+        sleep_with_log(interval, "retrying cluster readiness check")
     raise TimeoutError(f"Timed out waiting for cluster readiness: {last_status}")
 
 
@@ -526,7 +531,7 @@ def wait_for_cluster_member_present(
                 return True
         except Exception:  # noqa: BLE001
             pass
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for {node['hostname']} to appear in the cluster member list")
     return False
 
 

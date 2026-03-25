@@ -53,6 +53,11 @@ def run(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None =
         raise RuntimeError("\n".join(details)) from exc
 
 
+def sleep_with_log(seconds: int, reason: str) -> None:
+    print(f"[post-deploy] sleeping {seconds}s: {reason}", flush=True)
+    time.sleep(seconds)
+
+
 def parse_tfvars_string(tfvars_path: Path, key: str) -> str:
     pattern = re.compile(rf"^{re.escape(key)}\s*=\s*\"([^\"]*)\"", re.MULTILINE)
     match = pattern.search(tfvars_path.read_text())
@@ -110,7 +115,7 @@ def wait_for_port(host: str, port: int, timeout_seconds: int, *, want_open: bool
                 is_open = False
         if is_open == want_open:
             return
-        time.sleep(5)
+        sleep_with_log(5, f"waiting for {host}:{port} to become {'open' if want_open else 'closed'}")
     state = "open" if want_open else "closed"
     raise RuntimeError(f"Timed out waiting for {host}:{port} to become {state}")
 

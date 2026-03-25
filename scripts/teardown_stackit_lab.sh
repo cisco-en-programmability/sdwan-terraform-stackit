@@ -49,6 +49,13 @@ log() {
   printf '[teardown] %s\n' "$*"
 }
 
+sleep_with_log() {
+  local seconds="$1"
+  shift
+  log "sleeping ${seconds}s: $*"
+  sleep "$seconds"
+}
+
 tf_destroy() {
   if ((${#DESTROY_ARGS[@]} > 0)); then
     "$TF" -chdir="$REPO_DIR" destroy -auto-approve "${DESTROY_ARGS[@]}"
@@ -109,7 +116,7 @@ INVENTORY_JSON="$(get_controller_inventory)"
 detach_vmanage_data_volumes "$INVENTORY_JSON"
 
 log "Waiting 20 seconds for detach operations to settle"
-sleep 20
+sleep_with_log 20 "allowing STACKIT detach operations to settle before retrying terraform destroy"
 
 log "Retrying terraform destroy"
 if tf_destroy; then

@@ -25,6 +25,13 @@ log() {
   printf '[%s] %s\n' "$host" "$*"
 }
 
+pause_with_log() {
+  local seconds="$1"
+  shift
+  log "sleeping ${seconds}s: $*"
+  sleep "$seconds"
+}
+
 wait_for_port() {
   local target_host="$1"
   local target_port="$2"
@@ -40,7 +47,7 @@ wait_for_port() {
       log "waiting for ${target_host}:${target_port} to open"
       last_notice=$SECONDS
     fi
-    sleep 5
+    pause_with_log 5 "retrying ${target_host}:${target_port} open check"
   done
 
   return 1
@@ -61,7 +68,7 @@ wait_for_port_down() {
       log "waiting for ${target_host}:${target_port} to close"
       last_notice=$SECONDS
     fi
-    sleep 5
+    pause_with_log 5 "retrying ${target_host}:${target_port} closed check"
   done
 
   return 1
@@ -84,7 +91,7 @@ wait_for_https() {
       log "waiting for HTTPS on ${target_host}"
       last_notice=$SECONDS
     fi
-    sleep 10
+    pause_with_log 10 "retrying HTTPS check for ${target_host}"
   done
 
   return 1
@@ -158,7 +165,7 @@ wait_for_data_mount() {
       log "waiting for /opt/data to be mounted separately on ${target_host}"
       last_notice=$SECONDS
     fi
-    sleep 15
+    pause_with_log 15 "retrying /opt/data mount validation on ${target_host}"
   done
 
   return "$rc"

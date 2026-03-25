@@ -40,6 +40,11 @@ def append_optional_arg(cmd: List[str], flag: str, value: str | None) -> None:
     cmd.extend([flag, value])
 
 
+def sleep_with_message(seconds: int, reason: str) -> None:
+    print(f"==> sleeping {seconds} seconds: {reason}", flush=True)
+    time.sleep(seconds)
+
+
 def wait_for_cluster_stabilization(seconds: int) -> None:
     if seconds <= 0:
         return
@@ -51,7 +56,7 @@ def wait_for_cluster_stabilization(seconds: int) -> None:
         "The vManage cluster is up, but certificate enrollment works better after an additional stabilization window.",
         flush=True,
     )
-    time.sleep(seconds)
+    sleep_with_message(seconds, "allowing the 3-node vManage cluster to stabilize before certificate enrollment")
 
 
 def confirm_certificate_stage() -> None:

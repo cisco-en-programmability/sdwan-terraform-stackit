@@ -71,6 +71,11 @@ def log(message: str) -> None:
     print(f"[{timestamp}] {message}", flush=True)
 
 
+def sleep_with_log(seconds: int, reason: str) -> None:
+    log(f"sleeping {seconds}s: {reason}")
+    time.sleep(seconds)
+
+
 def run(cmd: List[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(cmd, text=True, capture_output=True, check=check)
@@ -275,7 +280,7 @@ class VManageApiSession:
                 if isinstance(exc, VManageApiError) and any(code in str(exc) for code in ("HTTP 400", "HTTP 404")):
                     raise
                 self.logged_in = False
-                time.sleep(10)
+                sleep_with_log(10, f"retrying vManage API request {method} {path}")
         raise VManageApiError(f"Request failed for {path}: {last_error}")
 
     @staticmethod
@@ -521,7 +526,7 @@ def wait_for_controller_registration(
     while time.monotonic() < deadline:
         if controller_is_registered(list_registered_controllers(session), node):
             return
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for {node['hostname']} to appear in vManage controller inventory")
     raise TimeoutError(f"Timed out waiting for {node['hostname']} to appear in vManage controller inventory")
 
 
@@ -581,7 +586,10 @@ def add_missing_controllers(config: Dict[str, Any], session: VManageApiSession) 
                         f"{node['hostname']} add attempt {attempt} returned an authentication error; "
                         f"retrying after {config['poll_interval_seconds']}s"
                     )
-                    time.sleep(config["poll_interval_seconds"])
+                    sleep_with_log(
+                        config["poll_interval_seconds"],
+                        f"retrying add-controller request for {node['hostname']}",
+                    )
             if last_error is not None:
                 raise RuntimeError(f"Unable to add {node['hostname']} to vManage: {last_error}")
 
@@ -683,7 +691,7 @@ def wait_for_controller_row(
         row = select_best_row(matches)
         if row:
             return row
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for a certificate inventory row for {node['hostname']}")
     raise TimeoutError(f"Timed out waiting for certificate inventory row for {node['hostname']}")
 
 
@@ -770,7 +778,7 @@ def wait_for_csr(
         row = wait_for_controller_row(session, node, timeout=interval, interval=max(2, interval // 2))
         if row_has_csr(row):
             return row
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for CSR text for {node['hostname']}")
     raise TimeoutError(f"Timed out waiting for CSR for {node['hostname']}")
 
 
@@ -787,7 +795,7 @@ def wait_for_csr_request_submitted(
             raise RuntimeError(f"CSR generation failed for {node['hostname']}: {row}")
         if controller_csr_requested(row):
             return row
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for CSR submission state for {node['hostname']}")
     raise TimeoutError(f"Timed out waiting for CSR submission for {node['hostname']}")
 
 
@@ -823,7 +831,7 @@ def wait_for_action_task(
                     raise RuntimeError(f"{label} failed: {payload}")
         except Exception:
             pass
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for task {task_id} for {label}")
     raise TimeoutError(f"Timed out waiting for task {task_id} for {label}; last payload={last_payload}")
 
 
@@ -883,7 +891,7 @@ def wait_for_certificate_installed(
             raise RuntimeError(f"Certificate install failed for {node['hostname']}: {row}")
         if controller_cert_installed(row):
             return
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for certificate install status for {node['hostname']}")
     raise TimeoutError(f"Timed out waiting for certificate install status for {node['hostname']}")
 
 
@@ -929,7 +937,7 @@ def wait_for_vmanage_relogin(
             return session
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            time.sleep(interval)
+            sleep_with_log(interval, f"retrying login to {base_url}")
     raise TimeoutError(f"Timed out waiting to re-login to {base_url}: {last_error}")
 
 
@@ -950,7 +958,7 @@ def wait_for_reachability(
                 outstanding.remove(hostname)
         if not outstanding:
             return
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for {role} controllers to come UP: {sorted(outstanding)}")
     raise TimeoutError(f"Timed out waiting for {role} controllers to be UP: {sorted(outstanding)}")
 
 
@@ -1019,7 +1027,7 @@ def wait_for_controller_signing_mode(
         signing = str(row.get("certificateSigning") or "").strip().lower()
         if signing == expected_normalized:
             return
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for controller signing mode to become {expected}")
     raise TimeoutError(f"Timed out waiting for controller certificate signing mode {expected}")
 
 
@@ -1136,7 +1144,7 @@ def wait_for_smart_licensing_ready(
             return
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            time.sleep(interval)
+            sleep_with_log(interval, "waiting for Smart Licensing readiness")
     raise TimeoutError(f"Timed out waiting for Smart Licensing readiness: {last_error}")
 
 
@@ -1165,7 +1173,7 @@ def wait_for_manual_cisco_services_registration(
             return
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            time.sleep(interval)
+            sleep_with_log(interval, "waiting for manual Cisco Services Registration to become active")
     raise TimeoutError(f"Timed out waiting for manual Cisco Services Registration to become active: {last_error}")
 
 
@@ -1248,7 +1256,7 @@ def wait_for_pnp_connect_sync(
         last_row = row
         if pnp_connect_sync_enabled(row) == enabled:
             return
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for PnP Connect Sync to turn {'on' if enabled else 'off'}")
     state = "on" if enabled else "off"
     raise TimeoutError(f"Timed out waiting for PnP Connect Sync {state}: {last_row}")
 
@@ -1315,7 +1323,7 @@ def wait_for_smart_account_validation(
             return
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            time.sleep(interval)
+            sleep_with_log(interval, "waiting for Smart Account validation")
     raise TimeoutError(f"Timed out waiting for Smart Account validation: {last_error}")
 
 
@@ -1521,7 +1529,11 @@ def run_cisco_pki_flow(
             next_pending.append(node)
         pending_nodes = next_pending
         if pending_nodes:
-            time.sleep(config["poll_interval_seconds"])
+            sleep_with_log(
+                config["poll_interval_seconds"],
+                "waiting for Cisco PKI certificate install on "
+                + ", ".join(node["hostname"] for node in pending_nodes),
+            )
 
     for node in pending_nodes:
         failures[node["hostname"]] = "Timed out waiting for Cisco PKI certificate install"

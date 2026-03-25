@@ -39,6 +39,11 @@ def log(message: str) -> None:
     print(f"[{timestamp}] {message}", flush=True)
 
 
+def sleep_with_log(seconds: int, reason: str) -> None:
+    log(f"sleeping {seconds}s: {reason}")
+    time.sleep(seconds)
+
+
 def choose_management_address(node: Dict[str, Any]) -> str:
     value = node.get("management_public_ip")
     if isinstance(value, str) and value:
@@ -224,7 +229,7 @@ def wait_for_task(
         if task_is_success(payload):
             log(f"Controller certificate sync task {task_id} completed successfully")
             return
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for controller certificate sync task {task_id}")
     raise TimeoutError(f"Timed out waiting for controller certificate sync task {task_id}")
 
 
@@ -246,7 +251,7 @@ def wait_for_controller_registration(
                 f"(validity={validity or 'unknown'}, state={state or 'unknown'})"
             )
             return
-        time.sleep(interval)
+        sleep_with_log(interval, f"waiting for {node['hostname']} to appear in vManage controller inventory")
     raise TimeoutError(f"Timed out waiting for {node['hostname']} to appear in vManage controller inventory")
 
 
@@ -316,7 +321,7 @@ def wait_for_controllers_up(config: Dict[str, Any], timeout: int, interval: int)
                 )
         if all_up:
             return
-        time.sleep(interval)
+        sleep_with_log(interval, "waiting for vBond and vSmart controllers to report UP in vManage")
     detail = "; ".join(last_status) if last_status else "no controller status returned"
     raise TimeoutError(f"Timed out waiting for vBond/vSmart controllers to come UP in vManage: {detail}")
 
