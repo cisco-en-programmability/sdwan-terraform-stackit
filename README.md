@@ -285,7 +285,7 @@ Common issues seen so far:
 
 - STACKIT provider warning about `No network interfaces configured`
   - Symptom: `terraform validate` or other provider operations emit that warning for `stackit_server.controller`.
-  - Action: this has been observed as a false-positive in this repo; validate the actual plan or apply outcome instead of treating the warning alone as fatal.
+  - Action: this warning is incorrect for this repo. Terraform still creates and attaches the controller management, transport, and cluster network interfaces as defined in the plan. Treat it as a known STACKIT provider false-positive and validate the actual plan or apply outcome instead of treating the warning alone as fatal.
 
 ## Notes
 
