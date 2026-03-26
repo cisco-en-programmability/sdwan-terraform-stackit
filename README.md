@@ -43,6 +43,7 @@ python3 ./scripts/stackit_upload_image.py \
 
 The helper wraps `stackit image create` and prints the resulting `image_ids = { ... }` block in the format expected by `terraform.tfvars`.
 Use the qcow2 files downloaded from `software.cisco.com > SDWAN > vManage Software / vSmart Software / vEdge Cloud > vBond Software`.
+After upload, wait until each imported image is fully available in STACKIT before running `terraform apply`. If Terraform starts while an image is still processing, boot-volume creation can fail with errors such as `Image <id> is not active`.
 
 `vbond_hostname` is not just a label. It must:
 
