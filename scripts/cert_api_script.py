@@ -352,7 +352,10 @@ def build_config_from_terraform(
                     "hostname": str(raw.get("hostname", key)),
                     "role": role,
                     "system_ip": str(raw.get("system_ip", "")),
+                    "management_ip": str(raw.get("management_ip", "")),
+                    "management_public_ip": str(raw.get("management_public_ip", "")),
                     "transport_ip": str(raw.get("transport_ip", "")),
+                    "transport_public_ip": str(raw.get("transport_public_ip", "")),
                     "cluster_ip": str(raw.get("cluster_ip", "")),
                     "management_url": f"https://{choose_management_address(raw)}",
                 }
@@ -651,22 +654,12 @@ def select_best_row(rows: Iterable[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
 
 def choose_device_ip_for_csr(node: Dict[str, Any], row: Dict[str, Any]) -> str:
-    if node["role"] == "vmanage":
-        if node.get("key") != "vmanage01":
-            cluster_ip = str(node.get("cluster_ip") or "").strip()
-            if cluster_ip:
-                return cluster_ip
-        for value in (
-            str(row.get("deviceIP") or "").strip(),
-            str(node.get("system_ip") or "").strip(),
-            str(node.get("cluster_ip") or "").strip(),
-        ):
-            if value:
-                return value
     for value in (
         str(row.get("deviceIP") or "").strip(),
+        str(node.get("management_ip") or "").strip(),
         str(node.get("transport_ip") or "").strip(),
         str(node.get("system_ip") or "").strip(),
+        str(node.get("cluster_ip") or "").strip(),
     ):
         if value:
             return value
@@ -1076,6 +1069,12 @@ def prompt_manual_cisco_services_registration(config: Dict[str, Any], organizati
     log_vbond_registration_details(config, vbond_hostname)
     log("In the vManage portal, go to: Settings > Cisco Services Registration")
     log("Select Plug-and-Play, choose Register Services, complete the activation-code flow, enter the Smart Account username and password, and enable it for Plug-and-Play.")
+    log(
+        "Also visit software.cisco.com, log in with the same Smart Account credentials, then go to Network Plug and Play > Controller Profiles."
+    )
+    log(
+        "Add or edit the controller profile and provide the profile name, description, organization name, and primary controller as the vBond DNS name or IP address. Then click Next, Next, confirm, and Save."
+    )
     confirmation = input("Type yes after Cisco Services Registration is completed successfully in the vManage portal: ").strip().lower()
     if confirmation != "yes":
         raise RuntimeError("Cisco Services Registration was not confirmed. Aborting before CSR generation.")

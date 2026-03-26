@@ -14,11 +14,12 @@ implementation scripts so the lower-level tools remain available for debugging.
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -40,6 +41,30 @@ def append_optional_arg(cmd: List[str], flag: str, value: str | None) -> None:
     cmd.extend([flag, value])
 
 
+def discover_primary_vmanage_url(module_dir: str) -> Optional[str]:
+    try:
+        completed = subprocess.run(
+            ["terraform", f"-chdir={module_dir}", "output", "-json", "controller_inventory"],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        inventory = json.loads(completed.stdout)
+        if not isinstance(inventory, dict):
+            return None
+        for key in sorted(inventory):
+            node = inventory.get(key)
+            if not isinstance(node, dict) or str(node.get("role", "")) != "vmanage":
+                continue
+            for field in ("management_public_ip", "transport_public_ip"):
+                value = str(node.get(field) or "").strip()
+                if value:
+                    return f"https://{value}"
+    except Exception:
+        return None
+    return None
+
+
 def sleep_with_message(seconds: int, reason: str) -> None:
     print(f"==> sleeping {seconds} seconds: {reason}", flush=True)
     time.sleep(seconds)
@@ -59,9 +84,23 @@ def wait_for_cluster_stabilization(seconds: int) -> None:
     sleep_with_message(seconds, "allowing the 3-node vManage cluster to stabilize before certificate enrollment")
 
 
-def confirm_certificate_stage() -> None:
+def confirm_certificate_stage(primary_vmanage_url: Optional[str]) -> None:
     print(
         "Certificate enrollment will now begin. This step can trigger controller serial-list and certificate pushes across the cluster.",
+        flush=True,
+    )
+    if primary_vmanage_url:
+        print(
+            f"Before continuing, open {primary_vmanage_url} and go to Administration > Cluster Management.",
+            flush=True,
+        )
+    else:
+        print(
+            "Before continuing, open the primary vManage URL and go to Administration > Cluster Management.",
+            flush=True,
+        )
+    print(
+        "Confirm the cluster is Ready and the Service Reachability tab shows all nodes healthy and reachable.",
         flush=True,
     )
     response = input("Type 'yes' to continue with controller certificate enrollment: ").strip()
@@ -105,6 +144,7 @@ def main() -> int:
     args = parser.parse_args()
 
     module_dir = args.module_dir or str(Path(__file__).resolve().parents[1])
+    primary_vmanage_url = discover_primary_vmanage_url(module_dir)
 
     cluster_cmd = [
         sys.executable,
@@ -128,7 +168,7 @@ def main() -> int:
         return 1
 
     wait_for_cluster_stabilization(args.post_cluster_delay_seconds)
-    confirm_certificate_stage()
+    confirm_certificate_stage(primary_vmanage_url)
 
     cert_cmd = [
         sys.executable,

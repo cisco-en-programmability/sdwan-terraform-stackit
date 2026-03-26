@@ -766,15 +766,21 @@ def main() -> int:
         state_file = config.get("state_file")
         if state_file and os.path.exists(state_file):
             log(f"Cluster bootstrap marker already exists at {state_file}; verifying current state")
-            wait_for_cluster_ready(
-                primary_url,
-                username,
-                password,
-                config["nodes"],
-                int(config["cluster_ready_timeout_seconds"]),
-                interval,
-            )
-            return 0
+            try:
+                wait_for_cluster_ready(
+                    primary_url,
+                    username,
+                    password,
+                    config["nodes"],
+                    int(config["cluster_ready_timeout_seconds"]),
+                    interval,
+                )
+                return 0
+            except Exception as exc:
+                log(
+                    f"Cluster bootstrap marker at {state_file} appears stale; "
+                    f"continuing with cluster formation because readiness verification failed: {exc}"
+                )
 
         confirm_cluster_formation(config, args.yes)
         prepare_primary_cluster_ip(config, interval)
