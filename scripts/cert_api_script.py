@@ -564,6 +564,7 @@ def add_missing_controllers(config: Dict[str, Any], session: VManageApiSession) 
             deadline = time.monotonic() + config["ready_timeout_seconds"]
             attempt = 0
             last_error: Optional[Exception] = None
+            warned_manual_auth_check = False
             while time.monotonic() < deadline:
                 attempt += 1
                 try:
@@ -589,6 +590,14 @@ def add_missing_controllers(config: Dict[str, Any], session: VManageApiSession) 
                         f"{node['hostname']} add attempt {attempt} returned an authentication error; "
                         f"retrying after {config['poll_interval_seconds']}s"
                     )
+                    if attempt >= 5 and not warned_manual_auth_check:
+                        log(
+                            f"Warning: {node['hostname']} has hit {attempt} consecutive authentication retries "
+                            f"against {config['primary_hostname']}. This can happen while vManage services are still restarting, "
+                            "but at this point you should also manually verify that the primary vManage UI/API login is healthy "
+                            "before waiting for more automatic retries."
+                        )
+                        warned_manual_auth_check = True
                     sleep_with_log(
                         config["poll_interval_seconds"],
                         f"retrying add-controller request for {node['hostname']}",

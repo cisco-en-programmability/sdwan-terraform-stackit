@@ -131,7 +131,7 @@ def main() -> int:
         action="store_true",
         help="Skip the manual Cisco Services Registration prompt and assume it is already configured on vManage.",
     )
-    parser.add_argument("--poll-interval-seconds", type=int, default=10, help="Polling interval used by both workflow stages.")
+    parser.add_argument("--poll-interval-seconds", type=int, default=20, help="Polling interval used by both workflow stages.")
     parser.add_argument("--server-ready-timeout-seconds", type=int, default=7200, help="Timeout for vManage HTTPS and server-ready checks.")
     parser.add_argument("--cluster-ready-timeout-seconds", type=int, default=10800, help="Timeout for cluster convergence.")
     parser.add_argument("--ready-timeout-seconds", type=int, default=2400, help="Timeout for certificate registration and enrollment waits.")

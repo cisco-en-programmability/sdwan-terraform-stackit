@@ -14,7 +14,6 @@ The config file is a JSON document with at least:
   "server_ready_timeout_seconds": 1800,
   "cluster_ready_timeout_seconds": 2400,
   "services": {"sd-avc": {"server": false}},
-  "state_file": "/var/lib/vmanage-cluster-bootstrap/configured",
   "nodes": [
     {
       "hostname": "stackittestuser-vmanage-01",
@@ -38,7 +37,6 @@ Notes:
 import argparse
 import http.client
 import json
-import os
 import re
 import socket
 import ssl
@@ -116,19 +114,34 @@ class VManageClient:
         self._logged_in = True
 
     def request(self, method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Any:
-        for attempt in range(2):
-            if not self._logged_in or attempt > 0:
-                if attempt > 0:
-                    log(f"Re-authenticating against {self.base_url}")
-                self.login()
-
+        max_attempts = 6
+        for attempt in range(1, max_attempts + 1):
             try:
+                if not self._logged_in:
+                    if attempt > 1:
+                        log(f"Re-authenticating against {self.base_url} (attempt {attempt}/{max_attempts})")
+                    self.login()
                 return self._request_once(method, path, payload)
             except VManageError as exc:
-                if "Authentication" not in str(exc) and "login page" not in str(exc):
+                message = str(exc)
+                should_retry = False
+                if "Authentication" in message or "login page" in message:
+                    should_retry = True
+                elif self._is_transient_error(message):
+                    should_retry = True
+
+                if not should_retry or attempt == max_attempts:
                     raise
+
                 self._logged_in = False
-        raise VManageError(f"Authentication retries exhausted for {self.base_url}")
+                sleep_with_log(
+                    20,
+                    (
+                        f"retrying vManage API request {method} {path} against {self.base_url} after transient failure: {message}. "
+                        "This can be expected while vManage services are restarting and being polled after cluster changes"
+                    ),
+                )
+        raise VManageError(f"vManage request retries exhausted for {self.base_url}{path}")
 
     def _request_once(self, method: str, path: str, payload: Optional[Dict[str, Any]]) -> Any:
         data = None if payload is None else json.dumps(payload).encode()
@@ -166,6 +179,25 @@ class VManageClient:
         except (urllib.error.URLError, TimeoutError, socket.timeout, http.client.RemoteDisconnected) as exc:
             reason = getattr(exc, "reason", str(exc))
             raise VManageError(f"Request failed for {request.full_url}: {reason}") from exc
+
+    @staticmethod
+    def _is_transient_error(message: str) -> bool:
+        lowered = message.lower()
+        transient_markers = (
+            "http 500",
+            "http 502",
+            "http 503",
+            "http 504",
+            "timed out",
+            "timeout",
+            "connection reset",
+            "connection refused",
+            "remote end closed",
+            "remote disconnected",
+            "temporarily unavailable",
+            "service unavailable",
+        )
+        return any(marker in lowered for marker in transient_markers)
 
     @staticmethod
     def _looks_like_login_page(body: str) -> bool:
@@ -211,7 +243,6 @@ def build_config_from_terraform(
     poll_interval_seconds: int,
     server_ready_timeout_seconds: int,
     cluster_ready_timeout_seconds: int,
-    state_file: Optional[str],
 ) -> Dict[str, Any]:
     inventory = terraform_output(module_dir, "controller_inventory")
     if not isinstance(inventory, dict):
@@ -249,10 +280,6 @@ def build_config_from_terraform(
         )
 
     primary_url = vmanage_nodes[0]["management_url"]
-    resolved_state_file = state_file or str(
-        module_dir / "artifacts" / "vmanage-cluster-bootstrap" / "configured"
-    )
-
     return {
         "username": username,
         "password": password,
@@ -261,7 +288,6 @@ def build_config_from_terraform(
         "server_ready_timeout_seconds": server_ready_timeout_seconds,
         "cluster_ready_timeout_seconds": cluster_ready_timeout_seconds,
         "services": {"sd-avc": {"server": False}},
-        "state_file": resolved_state_file,
         "nodes": vmanage_nodes,
     }
 
@@ -317,6 +343,21 @@ def extract_cluster_entries(payload: Any) -> Dict[str, Dict[str, Any]]:
             "config": config,
         }
     return entries
+
+
+def extract_cluster_list_metadata(payload: Any) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    data = payload.get("data", [])
+    if not isinstance(data, list) or not data:
+        return {}
+    first = data[0]
+    if not isinstance(first, dict):
+        return {}
+    return {
+        "is_ip_configured": first.get("isIPConfigured"),
+        "raw_member_count": len(first.get("data", [])) if isinstance(first.get("data"), list) else None,
+    }
 
 
 def extract_connected_device_ids(payload: Any) -> Set[str]:
@@ -445,14 +486,18 @@ def cluster_services_ready(
 ) -> Tuple[bool, str]:
     client = VManageClient(primary_url, username, password)
     entries = extract_cluster_health_entries(client.request("GET", "/dataservice/clusterManagement/health/status"))
+    issues: List[str] = []
     for node in expected_nodes:
         cluster_ip = node["cluster_ip"]
         service_status = entries.get(cluster_ip)
         if not service_status:
-            return False, f"{cluster_ip} missing from cluster health status"
+            issues.append(f"{cluster_ip} missing from cluster health status")
+            continue
         failed = sorted(name for name, value in service_status.items() if value is False)
         if failed:
-            return False, f"{cluster_ip} services not ready: {', '.join(failed)}"
+            issues.append(f"{cluster_ip} services not ready: {', '.join(failed)}")
+    if issues:
+        return False, "; ".join(issues)
     return True, "cluster services ready"
 
 
@@ -463,30 +508,48 @@ def cluster_ready(
     expected_nodes: List[Dict[str, Any]],
 ) -> Tuple[bool, str]:
     client = VManageClient(primary_url, username, password)
-    entries = extract_cluster_entries(client.request("GET", "/dataservice/clusterManagement/list"))
+    cluster_list_payload = client.request("GET", "/dataservice/clusterManagement/list")
+    entries = extract_cluster_entries(cluster_list_payload)
+    metadata = extract_cluster_list_metadata(cluster_list_payload)
+    if (
+        metadata.get("is_ip_configured") is False
+        and set(entries.keys()) == {"localhost"}
+    ):
+        return (
+            False,
+            "clusterManagement/list reports isIPConfigured=false with only localhost present; "
+            "the primary vManage is still standalone and ready for cluster formation",
+        )
+    issues: List[str] = []
     for node in expected_nodes:
         cluster_ip = node["cluster_ip"]
         system_ip = node["system_ip"]
         entry = entries.get(cluster_ip)
         if not entry:
-            return False, f"{cluster_ip} missing from cluster list"
+            issues.append(f"{cluster_ip} missing from cluster list")
+            continue
         state = str(entry.get("state") or "").lower()
         if state and state != "ready":
-            return False, f"{cluster_ip} is present but state={entry.get('state')}"
+            issues.append(f"{cluster_ip} is present but state={entry.get('state')}")
         try:
             connected = extract_connected_device_ids(
                 client.request("GET", f"/dataservice/clusterManagement/connectedDevices/{cluster_ip}")
             )
             if connected and system_ip not in connected:
-                return False, f"{cluster_ip} is present but system-ip {system_ip} is not connected yet"
+                connected_preview = ", ".join(sorted(connected))
+                issues.append(
+                    f"{cluster_ip} is present but expected system-ip {system_ip} is not in connectedDevices: [{connected_preview}]"
+                )
         except Exception as exc:  # noqa: BLE001
             log(f"Connected-device check for {cluster_ip} was inconclusive: {exc}")
     try:
         services_ready, service_status = cluster_services_ready(primary_url, username, password, expected_nodes)
         if not services_ready:
-            return False, service_status
+            issues.append(service_status)
     except Exception as exc:  # noqa: BLE001
-        return False, f"cluster health status check failed: {exc}"
+        issues.append(f"cluster health status check failed: {exc}")
+    if issues:
+        return False, "; ".join(issues)
     return True, "cluster ready"
 
 
@@ -509,8 +572,13 @@ def wait_for_cluster_ready(
             if ready:
                 log(f"Cluster is ready for {len(expected_nodes)} vManage node(s)")
                 return
+            if "still standalone and ready for cluster formation" in status:
+                log(f"Cluster is not formed yet: {status}")
+            else:
+                log(f"Cluster readiness not satisfied yet: {status}")
         except Exception as exc:  # noqa: BLE001
             last_status = str(exc)
+            log(f"Cluster readiness check hit an exception: {last_status}")
         sleep_with_log(interval, "retrying cluster readiness check")
     raise TimeoutError(f"Timed out waiting for cluster readiness: {last_status}")
 
@@ -662,15 +730,6 @@ def ensure_additional_members(config: Dict[str, Any], interval: int) -> None:
         )
 
 
-def write_success_marker(config: Dict[str, Any]) -> None:
-    state_file = config.get("state_file")
-    if not state_file:
-        return
-    path = Path(state_file)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(time.strftime("%Y-%m-%d %H:%M:%S") + "\n", encoding="utf-8")
-
-
 def confirm_cluster_formation(config: Dict[str, Any], auto_approve: bool) -> None:
     if auto_approve:
         return
@@ -688,6 +747,10 @@ def confirm_cluster_formation(config: Dict[str, Any], auto_approve: bool) -> Non
         )
     print(
         "This operation may restart application-server and may reboot cluster members while services resync.",
+        flush=True,
+    )
+    print(
+        "Temporary HTTP 503 responses and retry sleeps can be expected while the vManage services restart and the script polls for readiness.",
         flush=True,
     )
     response = input("Type 'yes' to continue with 3-node cluster formation: ").strip()
@@ -708,7 +771,6 @@ def main() -> int:
     parser.add_argument("--poll-interval-seconds", type=int, default=30, help="Polling interval for readiness checks.")
     parser.add_argument("--server-ready-timeout-seconds", type=int, default=7200, help="Timeout for HTTPS and /server/ready checks.")
     parser.add_argument("--cluster-ready-timeout-seconds", type=int, default=10800, help="Timeout for cluster convergence after each mutation.")
-    parser.add_argument("--state-file", default="", help="Optional local state-file path used to skip repeat cluster formation.")
     parser.add_argument("--yes", action="store_true", help="Skip the operator confirmation prompt before cluster mutation.")
     parser.add_argument("--verify-only", action="store_true", help="Only verify cluster readiness")
     args = parser.parse_args()
@@ -726,7 +788,6 @@ def main() -> int:
             poll_interval_seconds=args.poll_interval_seconds,
             server_ready_timeout_seconds=args.server_ready_timeout_seconds,
             cluster_ready_timeout_seconds=args.cluster_ready_timeout_seconds,
-            state_file=args.state_file or None,
         )
 
     interval = int(config.get("poll_interval_seconds", args.poll_interval_seconds))
@@ -758,29 +819,9 @@ def main() -> int:
                 interval,
             )
             log("vManage cluster is already ready; no cluster mutation is required")
-            write_success_marker(config)
             return 0
         except Exception:
             pass
-
-        state_file = config.get("state_file")
-        if state_file and os.path.exists(state_file):
-            log(f"Cluster bootstrap marker already exists at {state_file}; verifying current state")
-            try:
-                wait_for_cluster_ready(
-                    primary_url,
-                    username,
-                    password,
-                    config["nodes"],
-                    int(config["cluster_ready_timeout_seconds"]),
-                    interval,
-                )
-                return 0
-            except Exception as exc:
-                log(
-                    f"Cluster bootstrap marker at {state_file} appears stale; "
-                    f"continuing with cluster formation because readiness verification failed: {exc}"
-                )
 
         confirm_cluster_formation(config, args.yes)
         prepare_primary_cluster_ip(config, interval)
@@ -793,7 +834,6 @@ def main() -> int:
             int(config["cluster_ready_timeout_seconds"]),
             interval,
         )
-        write_success_marker(config)
         log("vManage cluster bootstrap completed successfully")
         return 0
     except Exception as exc:  # noqa: BLE001
